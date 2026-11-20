@@ -109,6 +109,7 @@ function defaultSettings(): GameSettings {
     showDebug: false,
     haptics: true,
     frameRateTarget: 60,
+    graphicsPreset: 'high',
   };
 }
 
