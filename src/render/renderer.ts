@@ -219,7 +219,30 @@ export class Renderer {
       const h = b.h * scale;
       const w = b.w * scale;
       const y = baseY - h;
+
+      // Layered facade shading turns the skyline into a readable city rather
+      // than a row of flat silhouettes. Gradients are deterministic and cheap.
+      const facade = ctx.createLinearGradient(x, y, x + w, y + h * 0.12);
+      facade.addColorStop(0, color);
+      facade.addColorStop(0.48, color);
+      facade.addColorStop(1, 'rgba(5,10,20,0.58)');
+      ctx.fillStyle = facade;
       ctx.fillRect(x, y, w, h + 40);
+
+      // Roof parapet, vertical concrete seam and rooftop equipment.
+      ctx.fillStyle = 'rgba(220,232,255,0.12)';
+      ctx.fillRect(x, y, w, Math.max(2, 3 * scale));
+      ctx.fillRect(x + w * 0.08, y + 5, Math.max(1, w * 0.018), h * 0.82);
+      if (b.lit > 0.62) {
+        ctx.fillStyle = 'rgba(8,13,24,0.62)';
+        ctx.fillRect(x + w * 0.62, y - 7 * scale, w * 0.2, 7 * scale);
+        ctx.strokeStyle = 'rgba(190,210,235,0.22)';
+        ctx.lineWidth = Math.max(1, scale);
+        ctx.beginPath();
+        ctx.moveTo(x + w * 0.72, y - 7 * scale);
+        ctx.lineTo(x + w * 0.72, y - 18 * scale);
+        ctx.stroke();
+      }
 
       // Lit windows.
       ctx.fillStyle = windowColor;
@@ -443,6 +466,19 @@ export class Renderer {
 
     const face = player.facing;
 
+    // Soft contact shadow anchors the articulated runner to the rooftop.
+    ctx.save();
+    ctx.translate(player.x, player.y + 5);
+    ctx.scale(1, 0.22);
+    const shadow = ctx.createRadialGradient(0, 0, 2, 0, 0, 34);
+    shadow.addColorStop(0, 'rgba(0,0,0,0.42)');
+    shadow.addColorStop(1, 'rgba(0,0,0,0)');
+    ctx.fillStyle = shadow;
+    ctx.beginPath();
+    ctx.arc(0, 0, 34, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+
     // --- Scarf (behind the body) -----------------------------------------
     ctx.strokeStyle = tierColor.scarf;
     ctx.lineWidth = 5;
@@ -536,6 +572,16 @@ export class Renderer {
     drawFoot(rig.leftFoot.ankle, rig.leftFoot.footAngle);
     drawFoot(rig.rightFoot.ankle, rig.rightFoot.footAngle);
 
+    // Reflective sole edges improve foot-placement readability at speed.
+    ctx.strokeStyle = 'rgba(225,235,248,0.72)';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(rig.leftFoot.ankle.x, rig.leftFoot.ankle.y + 2);
+    ctx.lineTo(rig.leftFoot.ankle.x + player.facing * 13, rig.leftFoot.ankle.y + 2);
+    ctx.moveTo(rig.rightFoot.ankle.x, rig.rightFoot.ankle.y + 2);
+    ctx.lineTo(rig.rightFoot.ankle.x + player.facing * 13, rig.rightFoot.ankle.y + 2);
+    ctx.stroke();
+
     // Torso.
     const pelvis = rig.pelvis;
     const neck = rig.neck;
@@ -544,6 +590,20 @@ export class Renderer {
     ctx.beginPath();
     ctx.moveTo(pelvis.x, pelvis.y);
     ctx.lineTo(neck.x, neck.y);
+    ctx.stroke();
+
+    // Fabric panel seams and a restrained cool key-light.
+    ctx.strokeStyle = 'rgba(225,235,250,0.22)';
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.moveTo(pelvis.x - 4, pelvis.y - 4);
+    ctx.lineTo(neck.x - 4, neck.y + 5);
+    ctx.stroke();
+    ctx.strokeStyle = 'rgba(5,9,18,0.34)';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(pelvis.x + 5, pelvis.y - 2);
+    ctx.lineTo(neck.x + 5, neck.y + 4);
     ctx.stroke();
 
     // Torso rim light.
