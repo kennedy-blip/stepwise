@@ -188,6 +188,7 @@ export class InputManager {
       if (e.pointerType === 'mouse') return;
       this.touchActive = true;
       const rect = el.getBoundingClientRect();
+      el.setPointerCapture?.(e.pointerId);
       const x = e.clientX - rect.left;
       const y = e.clientY - rect.top;
       const side: 'left' | 'right' = x < rect.width * 0.5 ? 'left' : 'right';
