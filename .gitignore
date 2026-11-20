@@ -1,0 +1,18 @@
+node_modules
+dist
+dist-ssr
+.vite
+*.local
+.DS_Store
+coverage
+*.log
+npm-debug.log*
+.idea
+.vscode/*
+!.vscode/extensions.json
+.vercel
+*.tsbuildinfo
+
+# Headless render snapshots produced by tools/render-png.ts
+preview-*.png
+scene.png
