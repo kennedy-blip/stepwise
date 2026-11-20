@@ -327,13 +327,7 @@ export class Renderer3D {
     const boneArr = boneAttr.array as Float32Array;
     let bi = 0;
 
-    const addBone = (
-      ax: number,
-      ay: number,
-      bx: number,
-      by: number,
-      z: number,
-    ): void => {
+    const addBone = (ax: number, ay: number, bx: number, by: number, z: number): void => {
       if (bi + 6 > boneArr.length) return;
       boneArr[bi++] = simX(ax);
       boneArr[bi++] = simY(ay);

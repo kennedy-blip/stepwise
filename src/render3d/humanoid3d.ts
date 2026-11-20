@@ -300,7 +300,8 @@ export class Humanoid3D {
       this.thighL.position.set(hipLx, hipLy, -LIMB_Z);
       const thighAngle = Math.atan2(kneeLy - hipLy, kneeLx - hipLx) - Math.PI / 2;
       this.thighL.rotation.z = thighAngle;
-      this.shinL.rotation.z = Math.atan2(ankleLy - kneeLy, ankleLx - kneeLx) - Math.PI / 2 - thighAngle;
+      this.shinL.rotation.z =
+        Math.atan2(ankleLy - kneeLy, ankleLx - kneeLx) - Math.PI / 2 - thighAngle;
       // Align the foot to the ground normal.
       this.footL.rotation.z = rig.leftFoot.footAngle;
       this.footL.position.set(0, -(SKELETON.shinLength / 40), 0);
@@ -318,7 +319,8 @@ export class Humanoid3D {
       this.thighR.position.set(hipRx, hipRy, LIMB_Z);
       const thighAngle = Math.atan2(kneeRy - hipRy, kneeRx - hipRx) - Math.PI / 2;
       this.thighR.rotation.z = thighAngle;
-      this.shinR.rotation.z = Math.atan2(ankleRy - kneeRy, ankleRx - kneeRx) - Math.PI / 2 - thighAngle;
+      this.shinR.rotation.z =
+        Math.atan2(ankleRy - kneeRy, ankleRx - kneeRx) - Math.PI / 2 - thighAngle;
       this.footR.rotation.z = rig.rightFoot.footAngle;
       this.footR.position.set(0, -(SKELETON.shinLength / 40), 0);
     }

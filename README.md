@@ -1,8 +1,14 @@
 # Stepwise
 
-**A 2D procedural IK rooftop parkour runner.** Real-time inverse kinematics,
+**A procedural IK rooftop parkour runner.** Real-time inverse kinematics,
 procedurally generated rooftops, and a physics engine written from scratch —
 no sprite sheets, no audio files, no game engine.
+
+The simulation is strictly 2D and runs on a fixed `Z = 0` traversal plane.
+The presentation layer is a Three.js 2.5D scene: extruded rooftops, a parallax
+city, atmospheric fog and a 3D-lit articulated runner driven by the existing
+two-bone IK. Browsers without WebGL fall back to the original Canvas 2D
+renderer, so the game is always playable.
 
 Runs on desktop web, mobile web, and as an installable Android APK.
 
@@ -120,16 +126,29 @@ The simulation is pure TypeScript and completely separated from rendering.
 src/core/      types, math helpers              no DOM
 src/physics/   IK solver, terrain + raycast     no DOM
 src/game/      player, rig, flow, chunks, world  no DOM
-src/render/    Canvas 2D renderer               reads simulation only
+src/engine/    graphics quality presets         no DOM
+src/render/    Canvas 2D renderer (fallback)    reads simulation only
+src/render3d/  Three.js 2.5D scene               reads simulation only
 src/ui/        DOM HUD, title, summary, settings reads simulation only
 src/audio/     Web Audio synthesizer
 src/main.ts    app shell: fixed-timestep loop + wiring
 ```
 
+The 3D layer is split into focused modules: `units.ts` owns the
+simulation↔scene coordinate boundary, `camera3d.ts` the framing, `world3d.ts`
+the rooftops and city, `humanoid3d.ts` the runner, `lighting3d.ts` the
+atmospheres, `textures3d.ts` the procedural materials, `renderer3d.ts` the
+renderer and post-processing, and `presenter.ts` the WebGL probe and the
+fallback to 2D.
+
 Because the simulation never touches the DOM, the entire game is unit tested
-in Node — 81 tests covering the IK maths, raycasting, the Flow state machine,
-the difficulty tables, chunk generation, the full game loop and the parkour
-mechanics.
+in Node — 190 tests covering the IK maths, raycasting, the Flow state machine,
+the difficulty tables, chunk generation, the full game loop, the parkour
+mechanics, and the simulation↔3D contract (depth bands, camera framing,
+lighting rigs, geometry pooling and the presenter fallback).
+
+`npx tsx tools/three-check.ts` runs the real 3D pipeline against the real
+simulation offline, so the scene graph can be validated in CI without a GPU.
 
 See [`AGENTS.md`](./AGENTS.md) for the full working rules.
 
@@ -192,6 +211,8 @@ never again point at a file that does not exist.
 
 ## Stack
 
-Vite · TypeScript (strict) · Canvas 2D · Web Audio · Vitest · ESLint · Prettier · Vercel
+Vite · TypeScript (strict) · Three.js · Web Audio · Vitest · ESLint · Prettier · Vercel
 
-No runtime dependencies.
+Three.js is loaded with a dynamic import, so devices without WebGL never
+download it — the main bundle stays at 93 kB (28 kB gzipped) and the 3D chunk
+is fetched only when it can actually be used.

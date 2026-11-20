@@ -106,7 +106,11 @@ export class Camera3D {
    */
   update(runnerX: number, runnerY: number, flowTier: number, dt: number): void {
     const targetDistance =
-      flowTier >= 3 ? CAMERA_3D.flowDistance : flowTier >= 2 ? CAMERA_3D.strideDistance : CAMERA_3D.baseDistance;
+      flowTier >= 3
+        ? CAMERA_3D.flowDistance
+        : flowTier >= 2
+          ? CAMERA_3D.strideDistance
+          : CAMERA_3D.baseDistance;
     this.distance = damp(this.distance, targetDistance, CAMERA_3D.followRate, dt);
 
     const targetX = simX(runnerX);
@@ -124,9 +128,7 @@ export class Camera3D {
     // Decaying shake, applied as a small positional jitter.
     this.shakeAmount = Math.max(0, this.shakeAmount - this.shakeAmount * CAMERA_3D.shakeDecay * dt);
     const shakeOffset =
-      this.shakeAmount > 0.001
-        ? (Math.random() - 0.5) * this.shakeAmount * 0.9
-        : 0;
+      this.shakeAmount > 0.001 ? (Math.random() - 0.5) * this.shakeAmount * 0.9 : 0;
 
     // The Flow Save zoom pulse briefly pushes the camera back.
     let pulse = 0;
@@ -159,7 +161,11 @@ export class Camera3D {
     const backX = -Math.sin(yaw) * this.distance;
     const backZ = Math.cos(yaw) * this.distance;
 
-    cam.position.set(leadX + backX + shakeOffset * 0.4, leadY + CAMERA_3D.elevation + shakeOffset, backZ);
+    cam.position.set(
+      leadX + backX + shakeOffset * 0.4,
+      leadY + CAMERA_3D.elevation + shakeOffset,
+      backZ,
+    );
 
     cam.rotation.order = 'YXZ';
     cam.rotation.y = yaw;

@@ -220,7 +220,10 @@ export class InputManager {
     const up = (e: PointerEvent) => {
       const rec = active.get(e.pointerId);
       active.delete(e.pointerId);
-      if (rec?.side === 'right' && !Array.from(active.values()).some((item) => item.side === 'right')) {
+      if (
+        rec?.side === 'right' &&
+        !Array.from(active.values()).some((item) => item.side === 'right')
+      ) {
         this.touchRight.mode = 'none';
       }
       e.preventDefault();

@@ -21,7 +21,9 @@ const cache = new Map<string, THREE.Texture>();
  * headless test environments cannot). Callers fall back to flat colours
  * rather than failing, because a missing texture must never stop the game.
  */
-function makeCanvas(size: number): { canvas: HTMLCanvasElement; ctx: CanvasRenderingContext2D } | null {
+function makeCanvas(
+  size: number,
+): { canvas: HTMLCanvasElement; ctx: CanvasRenderingContext2D } | null {
   try {
     const canvas = document.createElement('canvas');
     canvas.width = size;
@@ -174,7 +176,14 @@ function paintWood(ctx: CanvasRenderingContext2D, size: number, tint: string): v
       const gy = y + rand(p * 13.7 + g * 2.3) * h;
       ctx.beginPath();
       ctx.moveTo(0, gy);
-      ctx.bezierCurveTo(size * 0.3, gy + rand(g * 5.1) * 4 - 2, size * 0.7, gy + rand(g * 7.7) * 4 - 2, size, gy);
+      ctx.bezierCurveTo(
+        size * 0.3,
+        gy + rand(g * 5.1) * 4 - 2,
+        size * 0.7,
+        gy + rand(g * 7.7) * 4 - 2,
+        size,
+        gy,
+      );
       ctx.stroke();
     }
     // Plank separation.
@@ -308,7 +317,9 @@ export function woodTexture(tint = '#4a382c'): THREE.Texture {
  * Emissive window grid for the background city, tinted per sky mood.
  */
 export function windowTexture(color: string, density: number, key: string): THREE.Texture {
-  return buildTexture(`windows-${key}`, 128, (ctx, size) => paintWindows(ctx, size, 8, 12, color, density));
+  return buildTexture(`windows-${key}`, 128, (ctx, size) =>
+    paintWindows(ctx, size, 8, 12, color, density),
+  );
 }
 
 /** Disposes every cached texture. Used on teardown. */

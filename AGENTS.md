@@ -1,8 +1,11 @@
 # AGENTS.md — Working on Stepwise
 
-Stepwise is a 2D procedural IK rooftop parkour runner built with Vite, TypeScript
-(strict) and the native HTML5 Canvas 2D API. It ships to Vercel and is
-packaged for Android.
+Stepwise is a procedural IK rooftop parkour runner built with Vite, TypeScript
+(strict) and Three.js. It ships to Vercel and is packaged for Android.
+
+The simulation is strictly 2D on a fixed `Z = 0` traversal plane. The
+presentation layer is a Three.js 2.5D scene, with the original Canvas 2D
+renderer kept as a fallback for browsers without WebGL.
 
 Read this file before changing anything. The architecture rules below are what
 keep the project coherent.

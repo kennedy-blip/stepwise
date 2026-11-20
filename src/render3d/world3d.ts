@@ -71,7 +71,8 @@ export class World3D {
   /** Live prop groups, keyed by the hazard they represent. */
   private hazardGroups = new Map<Hazard, THREE.Group>();
   /** Debris pieces for broken planks and glass. */
-  private debris: { mesh: THREE.Mesh; vel: THREE.Vector3; spin: THREE.Vector3; life: number }[] = [];
+  private debris: { mesh: THREE.Mesh; vel: THREE.Vector3; spin: THREE.Vector3; life: number }[] =
+    [];
 
   /** Background city groups, repositioned rather than rebuilt. */
   private nearCity = new THREE.Group();
@@ -263,10 +264,7 @@ export class World3D {
         legs.position.y = h + 0.1;
         tower.add(legs);
       } else {
-        const box = new THREE.Mesh(
-          new THREE.BoxGeometry(w * 0.35, 0.8, d * 0.5),
-          darkMat,
-        );
+        const box = new THREE.Mesh(new THREE.BoxGeometry(w * 0.35, 0.8, d * 0.5), darkMat);
         box.position.set(hash(i * 23.3) * w - w / 2, h + 0.4, 0);
         tower.add(box);
       }
@@ -282,7 +280,8 @@ export class World3D {
       const w = 3 + hash(i * 37.7 + this.seed) * 7;
       const d = 3 + hash(i * 41.3 + this.seed) * 7;
       const x = (i - deepCount / 2) * 13 + hash(i * 43.9) * 9;
-      const z = DEPTH.deepSkyline.near - hash(i * 47.3) * (DEPTH.deepSkyline.near - DEPTH.deepSkyline.far);
+      const z =
+        DEPTH.deepSkyline.near - hash(i * 47.3) * (DEPTH.deepSkyline.near - DEPTH.deepSkyline.far);
 
       const tower = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), darkMat);
       tower.position.set(x, h / 2 - 12, z);
@@ -351,7 +350,10 @@ export class World3D {
    * The signature must fully describe the geometry's parameters, so two
    * calls with the same signature always yield an interchangeable buffer.
    */
-  private pooledGeometry(signature: string, build: () => THREE.BufferGeometry): THREE.BufferGeometry {
+  private pooledGeometry(
+    signature: string,
+    build: () => THREE.BufferGeometry,
+  ): THREE.BufferGeometry {
     const cached = this.geometryPool.get(signature);
     if (cached) return cached;
     const geo = build();
@@ -494,11 +496,7 @@ export class World3D {
             1.4,
             this.propMaterials.plank,
           );
-          slat.position.set(
-            (i - (slats - 1) / 2) * (hazard.w / 40 / slats),
-            0,
-            0,
-          );
+          slat.position.set((i - (slats - 1) / 2) * (hazard.w / 40 / slats), 0, 0);
           slat.castShadow = true;
           slat.userData.slatIndex = i;
           group.add(slat);
@@ -506,12 +504,7 @@ export class World3D {
         break;
       }
       case 'glass': {
-        const pane = box(
-          hazard.w / 40,
-          hazard.h / 40,
-          1.5,
-          this.propMaterials.glassPane,
-        );
+        const pane = box(hazard.w / 40, hazard.h / 40, 1.5, this.propMaterials.glassPane);
         pane.castShadow = true;
         group.add(pane);
         const frame = box(
@@ -586,7 +579,11 @@ export class World3D {
       this.group.add(mesh);
       this.debris.push({
         mesh,
-        vel: new THREE.Vector3((Math.random() - 0.5) * 2, Math.random() * 2.5, (Math.random() - 0.5) * 1.5),
+        vel: new THREE.Vector3(
+          (Math.random() - 0.5) * 2,
+          Math.random() * 2.5,
+          (Math.random() - 0.5) * 1.5,
+        ),
         spin: new THREE.Vector3(Math.random() * 4, Math.random() * 4, Math.random() * 4),
         life: 2.4,
       });
