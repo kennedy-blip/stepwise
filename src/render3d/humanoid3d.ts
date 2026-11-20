@@ -18,14 +18,51 @@ import { SKELETON } from '../game/config';
 import { FLOW_COLORS } from '../game/config';
 import type { CharacterRig } from '../game/rig';
 import { simX, simY } from './units';
+import { fabricTexture, skinTexture } from './textures3d';
 
 /** Z offsets that separate the left and right limbs in depth. */
 const LIMB_Z = 0.15;
 
+/**
+ * Body proportions, derived from the simulation skeleton.
+ *
+ * Every metric is expressed in metres and driven by `SKELETON`, so the 3D
+ * runner always matches the body the simulation actually simulates. Hard
+ * coded sizes here would silently desynchronise the mesh from the rig.
+ */
+const BODY = {
+  /** Pelvis block height. */
+  pelvisHeight: SKELETON.hipWidth / 40 + 0.12,
+  /** Pelvis block depth (front to back). */
+  pelvisDepth: 0.24,
+  /** Pelvis block width. */
+  pelvisWidth: 0.3,
+  /** Torso length from the pelvis to the neck, in metres. */
+  torsoLength: SKELETON.torsoLength / 40,
+  /** Chest height: the torso minus the pelvis block. */
+  chestHeight: SKELETON.torsoLength / 40 - (SKELETON.hipWidth / 40 + 0.12),
+  /** Chest width. */
+  chestWidth: 0.38,
+  /** Chest depth. */
+  chestDepth: 0.26,
+  /** Neck length from the neck joint to the head centre. */
+  neckLength: SKELETON.neckLength / 40,
+  /** Head radius. */
+  headRadius: SKELETON.headRadius / 40,
+  /** Shoulder half-width, used to seat the arms. */
+  shoulderHalfWidth: SKELETON.shoulderWidth / 40,
+} as const;
+
 export interface HumanoidMaterials {
+  /** Clothing fabric. */
   body: THREE.MeshStandardMaterial;
+  /** Exposed skin. */
+  skin: THREE.MeshStandardMaterial;
+  /** Trim, shoes and hard surfaces. */
   accent: THREE.MeshStandardMaterial;
+  /** Shoe soles. */
   sole: THREE.MeshStandardMaterial;
+  /** The scarf ribbon. */
   scarf: THREE.MeshStandardMaterial;
 }
 
@@ -68,21 +105,35 @@ export class Humanoid3D {
 
   constructor() {
     this.materials = {
+      // Clothing: a woven fabric map keeps the jacket and trousers from
+      // looking like flat coloured plastic as the runner turns. The tone is
+      // a mid slate rather than near-black, because a black silhouette
+      // disappears against a night rooftop.
       body: new THREE.MeshStandardMaterial({
-        color: '#1a1d27',
-        roughness: 0.62,
-        metalness: 0.18,
+        color: '#4a5570',
+        map: fabricTexture('#4a5570'),
+        roughness: 0.74,
+        metalness: 0.08,
       }),
+      // Exposed skin: face, hands, forearms.
+      skin: new THREE.MeshStandardMaterial({
+        color: '#d19a75',
+        map: skinTexture('#d19a75'),
+        roughness: 0.66,
+        metalness: 0.0,
+      }),
+      // The trim, the shoes and the visor carry a small emissive so the
+      // runner keeps a readable highlight even in the darkest mood.
       accent: new THREE.MeshStandardMaterial({
         color: '#e9eef5',
-        roughness: 0.42,
-        metalness: 0.35,
+        roughness: 0.38,
+        metalness: 0.4,
         emissive: new THREE.Color('#e9eef5'),
-        emissiveIntensity: 0.2,
+        emissiveIntensity: 0.22,
       }),
       sole: new THREE.MeshStandardMaterial({
         color: '#dfe6ef',
-        roughness: 0.85,
+        roughness: 0.82,
         metalness: 0.05,
       }),
       scarf: new THREE.MeshStandardMaterial({
@@ -130,46 +181,112 @@ export class Humanoid3D {
     const m = this.materials;
 
     // --- Pelvis / torso ----------------------------------------------------
-    const hips = new THREE.Mesh(new THREE.BoxGeometry(0.34, 0.2, 0.26), m.body);
+    // The pelvis block is centred on the rig's pelvis joint, and the chest
+    // rises from it by exactly the torso length, so the neck anchor lands
+    // where the simulation says it is.
+    const hips = new THREE.Mesh(
+      new THREE.BoxGeometry(BODY.pelvisWidth, BODY.pelvisHeight, BODY.pelvisDepth),
+      m.body,
+    );
     hips.castShadow = true;
     this.pelvis.add(hips);
 
-    const chest = new THREE.Mesh(new THREE.BoxGeometry(0.42, 0.5, 0.28), m.body);
-    chest.position.y = 0.32;
+    const chest = new THREE.Mesh(
+      new THREE.BoxGeometry(BODY.chestWidth, BODY.chestHeight, BODY.chestDepth),
+      m.body,
+    );
+    chest.position.y = BODY.pelvisHeight / 2 + BODY.chestHeight / 2;
     chest.castShadow = true;
     this.pelvis.add(chest);
 
+    // Shoulder yoke: widens the silhouette at the top of the chest.
+    const yoke = new THREE.Mesh(
+      new THREE.BoxGeometry(BODY.chestWidth + 0.06, BODY.chestHeight * 0.3, BODY.chestDepth),
+      m.body,
+    );
+    yoke.position.y = BODY.pelvisHeight / 2 + BODY.chestHeight * 0.85;
+    yoke.castShadow = true;
+    this.pelvis.add(yoke);
+
     // Chest accent panel.
-    const panel = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.32, 0.3), m.accent);
-    panel.position.set(0, 0.36, 0.005);
+    const panel = new THREE.Mesh(
+      new THREE.BoxGeometry(BODY.chestWidth * 0.5, BODY.chestHeight * 0.62, BODY.chestDepth + 0.02),
+      m.accent,
+    );
+    panel.position.y = BODY.pelvisHeight / 2 + BODY.chestHeight * 0.55;
     this.pelvis.add(panel);
 
     this.torso.add(this.pelvis);
     this.group.add(this.torso);
 
     // --- Neck / head --------------------------------------------------------
-    const neckMesh = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.07, 0.1, 8), m.body);
-    neckMesh.position.y = 0.62;
+    // The neck group is anchored at the rig's neck joint, so every part
+    // below is measured from that anchor using the skeleton lengths.
+    const neckMesh = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.055, 0.065, BODY.neckLength * 0.7, 8),
+      m.skin,
+    );
+    neckMesh.position.y = BODY.neckLength * 0.35;
     neckMesh.castShadow = true;
     this.neck.add(neckMesh);
 
-    const headMesh = new THREE.Mesh(new THREE.SphereGeometry(0.13, 14, 12), m.body);
-    headMesh.position.y = 0.76;
+    const headMesh = new THREE.Mesh(new THREE.SphereGeometry(BODY.headRadius, 16, 14), m.skin);
+    headMesh.position.y = BODY.neckLength;
     headMesh.castShadow = true;
     this.neck.add(headMesh);
 
-    // Hair / cap mass.
+    // Hair / cap mass: a cap over the top of the skull.
     const cap = new THREE.Mesh(
-      new THREE.SphereGeometry(0.135, 14, 12, 0, Math.PI * 2, 0, Math.PI * 0.6),
+      new THREE.SphereGeometry(BODY.headRadius * 1.04, 16, 14, 0, Math.PI * 2, 0, Math.PI * 0.58),
       m.accent,
     );
-    cap.position.y = 0.775;
+    cap.position.y = BODY.neckLength + BODY.headRadius * 0.04;
     this.neck.add(cap);
 
-    // Visor band.
-    const visor = new THREE.Mesh(new THREE.BoxGeometry(0.19, 0.035, 0.1), m.accent);
-    visor.position.set(0.03, 0.765, 0.08);
+    // Visor band across the eyes.
+    const visor = new THREE.Mesh(
+      new THREE.BoxGeometry(BODY.headRadius * 1.45, 0.035, BODY.headRadius * 0.8),
+      m.accent,
+    );
+    visor.position.set(
+      BODY.headRadius * 0.22,
+      BODY.neckLength + BODY.headRadius * 0.08,
+      BODY.headRadius * 0.62,
+    );
     this.neck.add(visor);
+
+    // --- Face ------------------------------------------------------------
+    // A nose and a pair of eyes. Without them the head is a ball, and the
+    // runner reads as a mannequin rather than a person.
+    const nose = new THREE.Mesh(
+      new THREE.ConeGeometry(BODY.headRadius * 0.2, BODY.headRadius * 0.34, 6),
+      m.skin,
+    );
+    nose.rotation.x = Math.PI / 2;
+    nose.position.set(
+      BODY.headRadius * 0.34,
+      BODY.neckLength - BODY.headRadius * 0.04,
+      BODY.headRadius * 0.88,
+    );
+    this.neck.add(nose);
+
+    for (const eyeZ of [-1, 1]) {
+      const eye = new THREE.Mesh(new THREE.SphereGeometry(BODY.headRadius * 0.13, 8, 6), m.accent);
+      eye.position.set(
+        BODY.headRadius * 0.3,
+        BODY.neckLength + BODY.headRadius * 0.14,
+        eyeZ * BODY.headRadius * 0.34,
+      );
+      this.neck.add(eye);
+    }
+
+    // Ears.
+    for (const earZ of [-1, 1]) {
+      const ear = new THREE.Mesh(new THREE.SphereGeometry(BODY.headRadius * 0.2, 8, 6), m.skin);
+      ear.scale.set(0.45, 1, 0.7);
+      ear.position.set(BODY.headRadius * 0.02, BODY.neckLength, earZ * BODY.headRadius * 0.92);
+      this.neck.add(ear);
+    }
 
     this.group.add(this.neck);
 
@@ -190,21 +307,25 @@ export class Humanoid3D {
 
       const foreMesh = new THREE.Mesh(
         new THREE.CapsuleGeometry(0.045, SKELETON.foreArmLength / 40 - 0.09, 4, 8),
-        m.body,
+        m.skin,
       );
       foreMesh.position.y = -(SKELETON.foreArmLength / 40) / 2;
       foreMesh.castShadow = true;
       fore.add(foreMesh);
 
-      const handMesh = new THREE.Mesh(new THREE.BoxGeometry(0.09, 0.13, 0.07), m.body);
+      const handMesh = new THREE.Mesh(new THREE.BoxGeometry(0.09, 0.13, 0.07), m.skin);
       handMesh.position.y = -0.06;
       handMesh.castShadow = true;
       hand.add(handMesh);
 
-      upper.add(fore);
-      fore.add(hand);
+      // The elbow and wrist are positioned in WORLD space each frame, so
+      // they hang off the root rather than off the upper arm. Nesting them
+      // would make their offsets inherit the parent's rotation, which put
+      // the hands in the wrong place entirely.
       upper.position.z = z;
       this.group.add(upper);
+      this.group.add(fore);
+      this.group.add(hand);
     };
 
     buildArm(this.upperArmL, this.foreArmL, this.handL, -LIMB_Z);
@@ -233,17 +354,37 @@ export class Humanoid3D {
       shinMesh.castShadow = true;
       shin.add(shinMesh);
 
-      const footMesh = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.07, 0.14), m.body);
-      footMesh.position.set(0.06, -0.035, 0);
-      footMesh.castShadow = true;
-      foot.add(footMesh);
+      // A runner's shoe: a shaped upper, a bright midsole and a heel
+      // block. A single flat box reads as a flipper.
+      const upper = new THREE.Mesh(new THREE.BoxGeometry(0.27, 0.075, 0.13), m.accent);
+      upper.position.set(0.05, -0.03, 0);
+      upper.castShadow = true;
+      foot.add(upper);
 
-      const sole = new THREE.Mesh(new THREE.BoxGeometry(0.31, 0.022, 0.15), m.sole);
-      sole.position.set(0.06, -0.07, 0);
+      // Toe box tapers forward.
+      const toe = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.06, 0.115), m.accent);
+      toe.position.set(0.2, -0.028, 0);
+      toe.castShadow = true;
+      foot.add(toe);
+
+      // Midsole.
+      const sole = new THREE.Mesh(new THREE.BoxGeometry(0.32, 0.024, 0.145), m.sole);
+      sole.position.set(0.06, -0.068, 0);
       foot.add(sole);
 
-      thigh.add(shin);
-      shin.add(foot);
+      // Heel block and ankle collar.
+      const heel = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.05, 0.125), m.sole);
+      heel.position.set(-0.07, -0.05, 0);
+      foot.add(heel);
+
+      const collar = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.06, 0.115), m.body);
+      collar.position.set(-0.06, 0.02, 0);
+      foot.add(collar);
+
+      // The knee and ankle are positioned in WORLD space each frame, so
+      // they hang off the root rather than off the thigh.
+      this.group.add(shin);
+      this.group.add(foot);
       thigh.position.z = z;
       this.group.add(thigh);
     };
@@ -294,17 +435,28 @@ export class Humanoid3D {
       const hipLy = simY(ll.root.y);
       const kneeLx = simX(ll.joint.x);
       const kneeLy = simY(ll.joint.y);
+      // `ll.end` is the SOLVED ankle: the IK clamps it when the target is
+      // out of reach, so the foot stays attached to the leg.
       const ankleLx = simX(ll.end.x);
       const ankleLy = simY(ll.end.y);
 
       this.thighL.position.set(hipLx, hipLy, -LIMB_Z);
-      const thighAngle = Math.atan2(kneeLy - hipLy, kneeLx - hipLx) - Math.PI / 2;
+      // The limb meshes run along local -Y (they are offset to -length/2),
+      // so the bone angle is atan2(dy, dx) + PI/2. Using -PI/2 here points
+      // every bone backwards, which splayed the runner's limbs.
+      const thighAngle = Math.atan2(kneeLy - hipLy, kneeLx - hipLx) + Math.PI / 2;
       this.thighL.rotation.z = thighAngle;
-      this.shinL.rotation.z =
-        Math.atan2(ankleLy - kneeLy, ankleLx - kneeLx) - Math.PI / 2 - thighAngle;
-      // Align the foot to the ground normal.
+
+      // The shin is positioned at the knee and rotated by the SHIN's own
+      // absolute angle, so it is not relative to the thigh.
+      this.shinL.position.set(kneeLx, kneeLy, -LIMB_Z);
+      this.shinL.rotation.z = Math.atan2(ankleLy - kneeLy, ankleLx - kneeLx) + Math.PI / 2;
+
+      // The foot sits on the SOLVED ankle, not the requested target. When
+      // the leg is overextended the IK clamps the chain, and using the
+      // unreachable target would detach the foot from the leg.
+      this.footL.position.set(ankleLx, ankleLy, -LIMB_Z);
       this.footL.rotation.z = rig.leftFoot.footAngle;
-      this.footL.position.set(0, -(SKELETON.shinLength / 40), 0);
     }
 
     const rl = rig.rightLeg;
@@ -317,12 +469,14 @@ export class Humanoid3D {
       const ankleRy = simY(rl.end.y);
 
       this.thighR.position.set(hipRx, hipRy, LIMB_Z);
-      const thighAngle = Math.atan2(kneeRy - hipRy, kneeRx - hipRx) - Math.PI / 2;
+      const thighAngle = Math.atan2(kneeRy - hipRy, kneeRx - hipRx) + Math.PI / 2;
       this.thighR.rotation.z = thighAngle;
-      this.shinR.rotation.z =
-        Math.atan2(ankleRy - kneeRy, ankleRx - kneeRx) - Math.PI / 2 - thighAngle;
+
+      this.shinR.position.set(kneeRx, kneeRy, LIMB_Z);
+      this.shinR.rotation.z = Math.atan2(ankleRy - kneeRy, ankleRx - kneeRx) + Math.PI / 2;
+
+      this.footR.position.set(ankleRx, ankleRy, LIMB_Z);
       this.footR.rotation.z = rig.rightFoot.footAngle;
-      this.footR.position.set(0, -(SKELETON.shinLength / 40), 0);
     }
 
     const la = rig.leftArm;
@@ -335,10 +489,13 @@ export class Humanoid3D {
       const wrY = simY(la.end.y);
 
       this.upperArmL.position.set(shX, shY, -LIMB_Z);
-      const upperAngle = Math.atan2(elY - shY, elX - shX) - Math.PI / 2;
+      const upperAngle = Math.atan2(elY - shY, elX - shX) + Math.PI / 2;
       this.upperArmL.rotation.z = upperAngle;
-      this.foreArmL.rotation.z = Math.atan2(wrY - elY, wrX - elX) - Math.PI / 2 - upperAngle;
-      this.handL.position.set(0, -(SKELETON.foreArmLength / 40), 0);
+
+      this.foreArmL.position.set(elX, elY, -LIMB_Z);
+      this.foreArmL.rotation.z = Math.atan2(wrY - elY, wrX - elX) + Math.PI / 2;
+
+      this.handL.position.set(wrX, wrY, -LIMB_Z);
     }
 
     const ra = rig.rightArm;
@@ -351,10 +508,13 @@ export class Humanoid3D {
       const wrY = simY(ra.end.y);
 
       this.upperArmR.position.set(shX, shY, LIMB_Z);
-      const upperAngle = Math.atan2(elY - shY, elX - shX) - Math.PI / 2;
+      const upperAngle = Math.atan2(elY - shY, elX - shX) + Math.PI / 2;
       this.upperArmR.rotation.z = upperAngle;
-      this.foreArmR.rotation.z = Math.atan2(wrY - elY, wrX - elX) - Math.PI / 2 - upperAngle;
-      this.handR.position.set(0, -(SKELETON.foreArmLength / 40), 0);
+
+      this.foreArmR.position.set(elX, elY, LIMB_Z);
+      this.foreArmR.rotation.z = Math.atan2(wrY - elY, wrX - elX) + Math.PI / 2;
+
+      this.handR.position.set(wrX, wrY, LIMB_Z);
     }
 
     // --- Scarf --------------------------------------------------------------

@@ -17,9 +17,48 @@ import type { Slab } from '../core/types';
 import type { Hazard, Terrain } from '../physics/terrain';
 import { LIGHTING_PRESETS, type LightingPreset } from './lighting3d';
 import { DEPTH, simX, simY } from './units';
+import { buildRooftopDressing } from './rooftop3d';
+
+/**
+ * How far from the camera (in metres) rooftop dressing is built.
+ *
+ * Just past the far edge of the frame, so detail fades out before the
+ * player can see it end.
+ */
+const DRESSING_RADIUS_M = 46;
+
+/**
+ * Horizontal spacing between near-city towers, in metres.
+ */
+const NEAR_CITY_SPACING_M = 7.5;
+
+/**
+ * Horizontal spacing between deep-skyline towers, in metres.
+ */
+const DEEP_CITY_SPACING_M = 11;
+
+/**
+ * How far the near city scrolls in one step, in metres.
+ *
+ * Must be a whole number of tower spacings so the pattern tiles without a
+ * seam.
+ */
+const NEAR_CITY_TILE_M = 30 * NEAR_CITY_SPACING_M;
+
+/** How far the deep skyline scrolls in one step, in metres. */
+const DEEP_CITY_TILE_M = 52 * DEEP_CITY_SPACING_M;
+
+/**
+ * How far from the camera (in metres) a rooftop is drawn.
+ *
+ * Comfortably wider than the visible frame at the current FOV, so roofs
+ * never pop in at the edge of the screen.
+ */
+const SLAB_RADIUS_M = 70;
 import {
   concreteRoughness,
   concreteTexture,
+  facadeTexture,
   glassTexture,
   gravelTexture,
   metalRoughness,
@@ -58,6 +97,9 @@ export class World3D {
 
   /** Live rooftop meshes, keyed by the slab they represent. */
   private slabMeshes = new Map<Slab, THREE.Mesh>();
+
+  /** Rooftop dressing (parapet, seams, plant, puddles), keyed by slab. */
+  private dressingGroups = new Map<Slab, THREE.Group>();
 
   /**
    * A pool of reusable geometry buffers, keyed by a shape signature.
@@ -147,6 +189,13 @@ export class World3D {
       roughness: 0.95,
       metalness: 0.02,
     });
+    // The near face of a rooftop block. Without this the block reads as a
+    // plain grey box, which is what makes a rooftop look like a plank.
+    this.propMaterials.facade = new THREE.MeshStandardMaterial({
+      map: facadeTexture(this.preset.facadeTint),
+      roughness: 0.78,
+      metalness: 0.12,
+    });
     this.propMaterials.pipe = new THREE.MeshStandardMaterial({
       color: '#5a6070',
       roughness: 0.42,
@@ -175,6 +224,36 @@ export class World3D {
       color: '#464d5b',
       roughness: 0.55,
       metalness: 0.65,
+    });
+
+    // --- Rooftop dressing ------------------------------------------------
+    // A weathered crate for the yard clutter.
+    this.propMaterials.crate = new THREE.MeshStandardMaterial({
+      color: '#6b5238',
+      roughness: 0.92,
+      metalness: 0.02,
+    });
+    // Expansion joints: slightly darker and rougher than the deck.
+    this.propMaterials.seam = new THREE.MeshStandardMaterial({
+      color: '#1d2029',
+      roughness: 0.98,
+      metalness: 0.0,
+    });
+    // The parapet lip: a touch lighter than the deck so the roof edge
+    // reads clearly against the city behind it.
+    this.propMaterials.parapet = new THREE.MeshStandardMaterial({
+      color: '#565d6e',
+      roughness: 0.8,
+      metalness: 0.08,
+    });
+    // Standing water: near-mirror, so it catches the sky and the sun.
+    this.propMaterials.puddle = new THREE.MeshStandardMaterial({
+      color: '#2c3548',
+      roughness: 0.06,
+      metalness: 0.9,
+      transparent: true,
+      opacity: 0.82,
+      envMapIntensity: 1.4,
     });
   }
 
@@ -223,6 +302,32 @@ export class World3D {
       metalness: 0.04,
     });
 
+    // The deep skyline is a silhouette, not a building. It is lit only by
+    // the sky, so it uses an unlit material tinted toward the fog colour.
+    // A fully shaded material turns these towers into black holes punched
+    // in the sky, which is exactly what a distant skyline must not be.
+    const silhouetteMat = new THREE.MeshBasicMaterial({
+      color: this.preset.fogColor,
+      fog: true,
+    });
+    this.windowMaterials.push(silhouetteMat);
+
+    // The deep skyline gets a much sparser window sheet than the near
+    // city, and a dimmer one, so the distance reads as distance.
+    const deepWinTex = windowTexture(
+      this.preset.windowColor,
+      this.preset.windowDensity * 0.35,
+      'deep',
+    );
+    const deepWinMat = new THREE.MeshBasicMaterial({
+      map: deepWinTex,
+      transparent: true,
+      blending: THREE.AdditiveBlending,
+      depthWrite: false,
+      opacity: 0.28,
+    });
+    this.windowMaterials.push(deepWinMat);
+
     const winTex = windowTexture(this.preset.windowColor, this.preset.windowDensity, 'init');
     const winMat = new THREE.MeshBasicMaterial({
       map: winTex,
@@ -243,6 +348,7 @@ export class World3D {
 
       const tower = new THREE.Group();
       const body = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), bodyMat);
+      body.receiveShadow = false;
       body.position.y = h / 2;
       body.castShadow = false;
       body.receiveShadow = false;
@@ -274,18 +380,37 @@ export class World3D {
     }
 
     // --- Deep band: tall silhouettes ---------------------------------------
-    const deepCount = Math.round(this.towerCount * 1.6);
+    const deepCount = Math.round(this.towerCount * 2.4);
     for (let i = 0; i < deepCount; i++) {
-      const h = 12 + hash(i * 31.1 + this.seed) * 34;
-      const w = 3 + hash(i * 37.7 + this.seed) * 7;
-      const d = 3 + hash(i * 41.3 + this.seed) * 7;
-      const x = (i - deepCount / 2) * 13 + hash(i * 43.9) * 9;
+      const h = 10 + hash(i * 31.1 + this.seed) * 22;
+      const w = 5 + hash(i * 37.7 + this.seed) * 11;
+      const d = 5 + hash(i * 41.3 + this.seed) * 9;
+      const x = (i - deepCount / 2) * DEEP_CITY_SPACING_M + hash(i * 43.9) * 9;
       const z =
         DEPTH.deepSkyline.near - hash(i * 47.3) * (DEPTH.deepSkyline.near - DEPTH.deepSkyline.far);
 
-      const tower = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), darkMat);
-      tower.position.set(x, h / 2 - 12, z);
+      const tower = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), silhouetteMat);
+      // Sunk so the tops land near the horizon rather than towering over
+      // the player. The tallest tower's crown must still stay below the
+      // rooftop line the player runs on.
+      tower.position.set(x, h / 2 - 21, z);
       this.deepCity.add(tower);
+
+      // A dim window sheet on the camera-facing side. The deep towers are
+      // silhouettes, but a scattering of lights sells the distance.
+      const deepWin = new THREE.Mesh(new THREE.PlaneGeometry(w * 0.86, h * 0.86), deepWinMat);
+      deepWin.position.set(x, h / 2 - 21, z + d / 2 + 0.05);
+      this.deepCity.add(deepWin);
+
+      // A slim crown on the tallest towers breaks up the flat skyline.
+      if (hash(i * 53.1 + this.seed) > 0.62) {
+        const crown = new THREE.Mesh(
+          new THREE.BoxGeometry(w * 0.28, 3 + hash(i * 59.3) * 6, d * 0.28),
+          silhouetteMat,
+        );
+        crown.position.set(x + (hash(i * 61.7) - 0.5) * w * 0.4, h - 18, z);
+        this.deepCity.add(crown);
+      }
     }
   }
 
@@ -308,6 +433,11 @@ export class World3D {
         this.group.add(mesh);
       }
       this.updateSlabMesh(mesh, slab);
+      // Slabs far outside the frame are hidden rather than removed: they
+      // may come back into view, and removing them would mean rebuilding
+      // the mesh every time the camera turns around.
+      const centreX = slab.x + slab.w / 2;
+      mesh.visible = Math.abs(centreX - cameraX) / 40 <= SLAB_RADIUS_M;
     }
 
     // Retire slabs that are gone (new level) or scrolled off screen.
@@ -316,6 +446,38 @@ export class World3D {
       if (seen.has(slab)) continue;
       this.group.remove(mesh);
       this.slabMeshes.delete(slab);
+    }
+
+    // Rooftop dressing follows the slabs it belongs to.
+    //
+    // The dressing is only built for roofs near the camera. A level holds
+    // hundreds of slabs but only a handful are ever on screen, and dressing
+    // every one of them would cost thousands of draw calls for detail the
+    // player can never see.
+    for (const slab of slabs) {
+      const centreX = slab.x + slab.w / 2;
+      const distance = Math.abs(centreX - cameraX) / 40;
+      const near = distance <= DRESSING_RADIUS_M;
+      const far = distance > DRESSING_RADIUS_M * 1.6;
+
+      let dressing = this.dressingGroups.get(slab);
+      if (near && !dressing) {
+        dressing = this.createDressingGroup(slab);
+        this.dressingGroups.set(slab, dressing);
+        this.group.add(dressing);
+      } else if (far && dressing) {
+        this.group.remove(dressing);
+        this.releaseGroup(dressing);
+        this.dressingGroups.delete(slab);
+        dressing = undefined;
+      }
+      if (dressing) dressing.visible = near;
+    }
+    for (const [slab, dressing] of this.dressingGroups) {
+      if (seen.has(slab)) continue;
+      this.group.remove(dressing);
+      this.releaseGroup(dressing);
+      this.dressingGroups.delete(slab);
     }
 
     // Props.
@@ -330,6 +492,10 @@ export class World3D {
         this.group.add(group);
       }
       this.updateHazardGroup(group, hazard);
+      // Props far outside the frame are hidden. They are kept in the map so
+      // that scrolling back does not have to rebuild them.
+      const centreX = hazard.x + hazard.w / 2;
+      group.visible = Math.abs(centreX - cameraX) / 40 <= SLAB_RADIUS_M;
     }
     for (const [hazard, group] of this.hazardGroups) {
       if (seenHazards.has(hazard)) continue;
@@ -340,8 +506,15 @@ export class World3D {
     }
 
     // Recycle the background city around the camera.
-    this.nearCity.position.x = Math.round(cameraX / 120) * 120;
-    this.deepCity.position.x = Math.round(cameraX / 200) * 200;
+    // The city scrolls with the camera so there is always a skyline behind
+    // the runner. It snaps in whole tiles, so the buildings never appear to
+    // slide sideways; the tile width divides the spacing of the towers so
+    // the pattern repeats seamlessly.
+    // `cameraX` arrives in simulation pixels, so it has to be converted to
+    // metres before it is compared against the city tile sizes.
+    const cameraMetres = cameraX / 40;
+    this.nearCity.position.x = Math.round(cameraMetres / NEAR_CITY_TILE_M) * NEAR_CITY_TILE_M;
+    this.deepCity.position.x = Math.round(cameraMetres / DEEP_CITY_TILE_M) * DEEP_CITY_TILE_M;
   }
 
   /**
@@ -383,6 +556,35 @@ export class World3D {
   private disposeGeometryPool(): void {
     for (const geo of this.geometryPool.values()) geo.dispose();
     this.geometryPool.clear();
+  }
+
+  /**
+   * Builds the dressing for one rooftop: parapet, seams, plant and puddles.
+   *
+   * It is positioned in the slab's local space so it inherits the slab's
+   * angle, and it never reaches past the front lip, so it can never hide
+   * the landing edge.
+   */
+  private createDressingGroup(slab: Slab): THREE.Group {
+    // A stable seed keeps the layout identical while the slab is on
+    // screen, so the dressing does not shimmer as the camera moves.
+    const seed = Math.abs(slab.x * 0.37 + slab.y * 0.11 + slab.w * 0.013);
+    return buildRooftopDressing(
+      slab,
+      seed,
+      this.unitBox(),
+      (segments: number) => this.unitCylinder(segments),
+      {
+        metal: this.propMaterials.pipe,
+        darkMetal: this.propMaterials.darkMetal,
+        vent: this.propMaterials.vent,
+        crate: this.propMaterials.crate,
+        facade: this.propMaterials.facade,
+        seam: this.propMaterials.seam,
+        puddle: this.propMaterials.puddle,
+        parapet: this.propMaterials.parapet,
+      },
+    );
   }
 
   /** Creates the mesh for a rooftop slab: an extruded top surface plus a body. */
@@ -614,11 +816,13 @@ export class World3D {
    * buffers stay available for the next prop that needs them.
    */
   private releaseGroup(group: THREE.Group): void {
-    group.traverse((obj) => {
-      if (obj instanceof THREE.Mesh) {
-        obj.removeFromParent();
-      }
-    });
+    // NOTE: the children are collected FIRST and removed afterwards.
+    // `Object3D.traverse` captures `children.length` before iterating, so
+    // removing a child while traversing splices the array out from under
+    // the loop and it reads past the end. Collect, then remove.
+    for (const obj of collectMeshes(group)) {
+      obj.removeFromParent();
+    }
   }
 
   /**
@@ -628,12 +832,10 @@ export class World3D {
    * background city towers.
    */
   private disposeGroup(group: THREE.Group): void {
-    group.traverse((obj) => {
-      if (obj instanceof THREE.Mesh) {
-        obj.geometry.dispose();
-        obj.removeFromParent();
-      }
-    });
+    for (const obj of collectMeshes(group)) {
+      obj.geometry.dispose();
+      obj.removeFromParent();
+    }
   }
 
   /** Disposes every GPU resource owned by the world. */
@@ -649,6 +851,12 @@ export class World3D {
     }
     this.hazardGroups.clear();
 
+    for (const group of this.dressingGroups.values()) {
+      this.group.remove(group);
+      this.releaseGroup(group);
+    }
+    this.dressingGroups.clear();
+
     // Debris reuses pooled geometry.
     for (const d of this.debris) this.group.remove(d.mesh);
     this.debris.length = 0;
@@ -661,4 +869,19 @@ export class World3D {
     for (const mat of Object.values(this.propMaterials)) mat.dispose();
     this.disposeGeometryPool();
   }
+}
+
+/**
+ * Collects every mesh under a node into an array.
+ *
+ * The array must be built before any removal happens: `Object3D.traverse`
+ * caches `children.length` up front, so mutating the child list during the
+ * walk makes it index past the end of the array.
+ */
+function collectMeshes(root: THREE.Object3D): THREE.Mesh[] {
+  const meshes: THREE.Mesh[] = [];
+  root.traverse((obj) => {
+    if (obj instanceof THREE.Mesh) meshes.push(obj);
+  });
+  return meshes;
 }
