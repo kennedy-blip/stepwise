@@ -67,6 +67,13 @@ function parseColor(value: unknown): RGB {
 class Raster {
   data = new Uint8ClampedArray(W * H * 4);
 
+  /**
+   * Active clip rectangle in device pixels. The renderer only ever clips with
+   * axis-aligned rectangles, so a bounding-box clip is exact and keeps this
+   * offline renderer honest about what the browser actually shows.
+   */
+  clipRect: { x0: number; y0: number; x1: number; y1: number } | null = null;
+
   blend(x: number, y: number, color: RGB): void {
     if (x < 0 || y < 0 || x >= W || y >= H) return;
     const i = (y * W + x) * 4;
@@ -78,10 +85,16 @@ class Raster {
   }
 
   fill(x: number, y: number, w: number, h: number, color: RGB): void {
-    const x0 = Math.max(0, Math.round(x));
-    const y0 = Math.max(0, Math.round(y));
-    const x1 = Math.min(W, Math.round(x + w));
-    const y1 = Math.min(H, Math.round(y + h));
+    let x0 = Math.max(0, Math.round(x));
+    let y0 = Math.max(0, Math.round(y));
+    let x1 = Math.min(W, Math.round(x + w));
+    let y1 = Math.min(H, Math.round(y + h));
+    if (this.clipRect) {
+      x0 = Math.max(x0, this.clipRect.x0);
+      y0 = Math.max(y0, this.clipRect.y0);
+      x1 = Math.min(x1, this.clipRect.x1);
+      y1 = Math.min(y1, this.clipRect.y1);
+    }
     for (let py = y0; py < y1; py++) {
       for (let px = x0; px < x1; px++) {
         this.blend(px, py, color);
@@ -235,6 +248,7 @@ function makeContext(): Record<string, unknown> {
   //   y' = b*x + d*y + f
   let m: [number, number, number, number, number, number] = [1, 0, 0, 1, 0, 0];
   const stack: (typeof m)[] = [];
+  const clipStack: (typeof raster.clipRect)[] = [];
 
   const apply = (x: number, y: number): { x: number; y: number } => ({
     x: m[0] * x + m[2] * y + m[4],
@@ -258,10 +272,13 @@ function makeContext(): Record<string, unknown> {
     canvas: { width: W, height: H },
     save() {
       stack.push([...m] as typeof m);
+      clipStack.push(raster.clipRect);
     },
     restore() {
       const prev = stack.pop();
       if (prev) m = prev;
+      const clip = clipStack.pop();
+      raster.clipRect = clip === undefined ? null : clip;
     },
     scale(x: number, y: number) {
       multiply([x, 0, 0, y, 0, 0]);
@@ -353,7 +370,34 @@ function makeContext(): Record<string, unknown> {
         );
       }
     },
-    clip() {},
+    clip() {
+      // Approximate the clip with the bounding box of the current path. Every
+      // clip in the renderer is an axis-aligned rectangle, so this matches the
+      // browser exactly for the shapes we actually use.
+      const parts = current.length > 0 ? [...subPaths, current] : subPaths;
+      if (parts.length === 0) {
+        raster.clipRect = null;
+        return;
+      }
+      let minX = Infinity;
+      let minY = Infinity;
+      let maxX = -Infinity;
+      let maxY = -Infinity;
+      for (const part of parts) {
+        for (const p of part) {
+          if (p.x < minX) minX = p.x;
+          if (p.x > maxX) maxX = p.x;
+          if (p.y < minY) minY = p.y;
+          if (p.y > maxY) maxY = p.y;
+        }
+      }
+      raster.clipRect = {
+        x0: Math.max(0, Math.floor(minX)),
+        y0: Math.max(0, Math.floor(minY)),
+        x1: Math.min(W, Math.ceil(maxX)),
+        y1: Math.min(H, Math.ceil(maxY)),
+      };
+    },
     fill() {
       const parts = current.length > 0 ? [...subPaths, current] : subPaths;
       for (const part of parts) {
@@ -456,10 +500,16 @@ function makeContext(): Record<string, unknown> {
   // Fill a rectangle with the current fill style.
   ctx.fillRect = (x: number, y: number, w: number, h: number) => {
     if (fillStyle instanceof Gradient) {
-      const x0 = Math.max(0, Math.round(x));
-      const y0 = Math.max(0, Math.round(y));
-      const x1 = Math.min(W, Math.round(x + w));
-      const y1 = Math.min(H, Math.round(y + h));
+      let x0 = Math.max(0, Math.round(x));
+      let y0 = Math.max(0, Math.round(y));
+      let x1 = Math.min(W, Math.round(x + w));
+      let y1 = Math.min(H, Math.round(y + h));
+      if (raster.clipRect) {
+        x0 = Math.max(x0, raster.clipRect.x0);
+        y0 = Math.max(y0, raster.clipRect.y0);
+        x1 = Math.min(x1, raster.clipRect.x1);
+        y1 = Math.min(y1, raster.clipRect.y1);
+      }
       for (let py = y0; py < y1; py++) {
         for (let px = x0; px < x1; px++) {
           const c = fillStyle.at(px + 0.5, py + 0.5);

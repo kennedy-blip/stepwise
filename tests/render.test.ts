@@ -9,8 +9,16 @@
 import { describe, expect, it, beforeEach } from 'vitest';
 import { World } from '../src/game/world';
 import { Renderer } from '../src/render/renderer';
-import { PHYSICS } from '../src/game/config';
+import { PHYSICS, SKY_MOODS } from '../src/game/config';
 import { createInputState } from '../src/core/types';
+
+/** Extracts the alpha channel from an `rgba(...)` colour string. */
+function alphaOf(color: string): number {
+  const match = color.match(/rgba?\(([^)]+)\)/);
+  if (!match) return 0;
+  const parts = match[1].split(',').map((p) => parseFloat(p.trim()));
+  return parts.length >= 4 ? parts[3] : 1;
+}
 
 /** A recording no-op Canvas2D context. */
 function makeMockContext(): CanvasRenderingContext2D {
@@ -36,6 +44,7 @@ function makeMockContext(): CanvasRenderingContext2D {
     rotate: () => calls.push('rotate'),
     beginPath: () => calls.push('beginPath'),
     closePath: () => calls.push('closePath'),
+    clip: () => calls.push('clip'),
     moveTo: () => calls.push('moveTo'),
     lineTo: () => calls.push('lineTo'),
     arc: () => calls.push('arc'),
@@ -76,6 +85,29 @@ function makeMockCanvas(): HTMLCanvasElement {
   return canvas as unknown as HTMLCanvasElement;
 }
 
+/** Renders one frame and returns the recorded Canvas2D call names. */
+function renderWithRecording(world: World, mood: 'dusk' | 'rain' | 'dawn'): string[] {
+  const ctx = makeMockContext();
+  const canvas = {
+    width: 1280,
+    height: 720,
+    getContext: () => ctx,
+    getBoundingClientRect: () => ({
+      left: 0,
+      top: 0,
+      width: 1280,
+      height: 720,
+      right: 1280,
+      bottom: 720,
+    }),
+    addEventListener: () => undefined,
+    style: {},
+  } as unknown as HTMLCanvasElement;
+  const r = new Renderer(canvas);
+  r.render(world, { showDebug: false, skyMood: mood });
+  return (ctx as unknown as { calls: string[] }).calls;
+}
+
 describe('Renderer (headless)', () => {
   let world: World;
   let renderer: Renderer;
@@ -98,6 +130,41 @@ describe('Renderer (headless)', () => {
 
   it('renders the debug overlay without throwing', () => {
     expect(() => renderer.render(world, { showDebug: true, skyMood: 'dusk' })).not.toThrow();
+  });
+
+  it('draws three separated parallax city layers', () => {
+    const calls = renderWithRecording(world, 'dusk');
+    // Each city layer clips a haze wash to its own towers, so a scene with
+    // three layers must record at least three clips.
+    expect(calls.filter((c) => c === 'clip').length).toBeGreaterThanOrEqual(3);
+  });
+
+  it('applies atmospheric haze for every sky mood', () => {
+    for (const mood of ['dusk', 'rain', 'dawn'] as const) {
+      const palette = SKY_MOODS[mood];
+      expect(palette.haze.far).toMatch(/rgba?\(/);
+      expect(palette.haze.mid).toMatch(/rgba?\(/);
+      expect(palette.haze.near).toMatch(/rgba?\(/);
+      expect(palette.groundHaze).toMatch(/rgba?\(/);
+      // The haze must weaken toward the viewer, otherwise the foreground
+      // city dissolves as much as the far city does.
+      expect(alphaOf(palette.haze.near)).toBeLessThan(alphaOf(palette.haze.mid));
+      expect(alphaOf(palette.haze.mid)).toBeLessThan(alphaOf(palette.haze.far));
+    }
+  });
+
+  it('gives every sky mood a horizon placement inside the viewport', () => {
+    for (const mood of ['dusk', 'rain', 'dawn'] as const) {
+      const { horizonY } = SKY_MOODS[mood];
+      expect(horizonY).toBeGreaterThan(0.2);
+      expect(horizonY).toBeLessThan(0.9);
+    }
+  });
+
+  it('draws material-specific rooftop texture', () => {
+    const calls = renderWithRecording(world, 'dusk');
+    // Slab texture is clipped per material, so multiple clips must appear.
+    expect(calls.filter((c) => c === 'clip').length).toBeGreaterThanOrEqual(4);
   });
 
   it('renders mid-run without throwing', () => {
