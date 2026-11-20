@@ -1,0 +1,81 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    Minimal framework resource table used only for linking.
+
+    `aapt2 link` resolves every `android:` attribute reference in
+    AndroidManifest.xml against a framework resource table. On a machine with
+    the Android SDK installed that table comes from
+    `platforms/android-XX/data/res` (built into `framework-res.apk`).
+
+    This project builds its APK without the SDK, so it links against this
+    synthetic framework instead. It declares exactly the framework attributes
+    the manifest uses, as *public* symbols so the linker accepts them. The
+    resource IDs are resolved at runtime against the real device framework, so
+    the values on device are always the genuine Android ones.
+
+    Keep this list in sync with android/AndroidManifest.xml.
+-->
+<resources>
+    <attr name="allowBackup" format="boolean" />
+    <public type="attr" name="allowBackup" format="boolean" />
+
+    <attr name="anyDensity" format="boolean" />
+    <public type="attr" name="anyDensity" format="boolean" />
+
+    <attr name="configChanges" format="string" />
+    <public type="attr" name="configChanges" format="string" />
+
+    <attr name="exported" format="boolean" />
+    <public type="attr" name="exported" format="boolean" />
+
+    <attr name="hardwareAccelerated" format="boolean" />
+    <public type="attr" name="hardwareAccelerated" format="boolean" />
+
+    <attr name="icon" format="reference" />
+    <public type="attr" name="icon" format="reference" />
+
+    <attr name="label" format="string" />
+    <public type="attr" name="label" format="string" />
+
+    <attr name="largeScreens" format="boolean" />
+    <public type="attr" name="largeScreens" format="boolean" />
+
+    <attr name="minSdkVersion" format="integer" />
+    <public type="attr" name="minSdkVersion" format="integer" />
+
+    <attr name="name" format="string" />
+    <public type="attr" name="name" format="string" />
+
+    <attr name="normalScreens" format="boolean" />
+    <public type="attr" name="normalScreens" format="boolean" />
+
+    <attr name="required" format="boolean" />
+    <public type="attr" name="required" format="boolean" />
+
+    <attr name="screenOrientation" format="string" />
+    <public type="attr" name="screenOrientation" format="string" />
+
+    <attr name="smallScreens" format="boolean" />
+    <public type="attr" name="smallScreens" format="boolean" />
+
+    <attr name="supportsRtl" format="boolean" />
+    <public type="attr" name="supportsRtl" format="boolean" />
+
+    <attr name="targetSdkVersion" format="integer" />
+    <public type="attr" name="targetSdkVersion" format="integer" />
+
+    <attr name="theme" format="reference" />
+    <public type="attr" name="theme" format="reference" />
+
+    <attr name="usesCleartextTraffic" format="boolean" />
+    <public type="attr" name="usesCleartextTraffic" format="boolean" />
+
+    <attr name="versionCode" format="integer" />
+    <public type="attr" name="versionCode" format="integer" />
+
+    <attr name="versionName" format="string" />
+    <public type="attr" name="versionName" format="string" />
+
+    <attr name="xlargeScreens" format="boolean" />
+    <public type="attr" name="xlargeScreens" format="boolean" />
+</resources>

@@ -123,7 +123,7 @@ roof, costing 50% of the meter instead of ending the run.
 The simulation is pure TypeScript and completely separated from rendering.
 
 ```
-src/core/      types, math helpers              no DOM
+src/core/      types, math helpers, platform     no DOM
 src/physics/   IK solver, terrain + raycast     no DOM
 src/game/      player, rig, flow, chunks, world  no DOM
 src/engine/    graphics quality presets         no DOM
@@ -132,6 +132,9 @@ src/render3d/  Three.js 2.5D scene               reads simulation only
 src/ui/        DOM HUD, title, summary, settings reads simulation only
 src/audio/     Web Audio synthesizer
 src/main.ts    app shell: fixed-timestep loop + wiring
+
+android/       Android APK project (manifest, smali, resources)
+scripts/       APK build + verification scripts
 ```
 
 The 3D layer is split into focused modules: `units.ts` owns the
@@ -165,6 +168,8 @@ npm run test:watch  # watch mode
 npm run typecheck   # tsc --noEmit
 npm run lint        # ESLint
 npm run format      # Prettier
+npm run build:apk   # build + sign the Android package
+npm run verify:apk  # validate the shipped APK
 ```
 
 ### Development tools
@@ -187,25 +192,72 @@ without a browser.
 
 The in-game **Download Android APK (One-Tap)** button points at
 `/downloads/stepwise.apk`, configured by the single constant `APK_DOWNLOAD_URL`
-in `src/game/config.ts`.
+in `src/game/config.ts`. **A real, signed Android package ships there** — it
+installs and runs, it is not a placeholder.
 
-To ship a real binary, follow [`public/downloads/README.txt`](./public/downloads/README.txt) —
-it covers both Bubblewrap (TWA) and Capacitor, including release signing.
+### What is in the APK
 
-Until a signed build is dropped in, `/downloads/stepwise.apk` is rewritten to
-`/downloads/stepwise.apk.txt`, a plain-text notice. The in-game card reads
-**"Android APK — coming soon"** rather than promising an install that would
-fail, and the game remains fully playable in the browser.
+The APK is a full-screen, landscape-locked WebView Activity that loads the
+production web build from `file:///android_asset/www/index.html`. The same
+bundle is used for the web deploy, so the two editions never drift apart.
 
-Two flags in `src/game/config.ts` control this:
+Inside the wrapper the game gains:
 
-| Constant           | Meaning                                                                                                                                   |
-| ------------------ | ----------------------------------------------------------------------------------------------------------------------------------------- |
-| `APK_DOWNLOAD_URL` | The route the button points at                                                                                                            |
-| `APK_AVAILABLE`    | `false` while no signed binary exists; set to `true` when `public/downloads/stepwise.apk` is dropped in and `stepwise.apk.txt` is removed |
+- **Native haptics** — the Activity injects a `StepwiseNative` bridge; jumps,
+  landings, flow changes and Flow Saves pulse the device vibrator. The browser
+  falls back to the Vibration API.
+- **A native frame-rate target** — the wrapper recommends 60 Hz to stay inside
+  the WebView's thermal budget; the Settings panel exposes it.
+- **Immersive fullscreen** — the system bars are hidden and stay hidden.
 
-`tests/deploy.test.ts` asserts the two stay in sync, so the download route can
-never again point at a file that does not exist.
+`src/core/platform.ts` owns the bridge; it degrades to no-ops when the bridge
+is absent, so the browser build is unaffected.
+
+### Building it
+
+The build deliberately avoids the Android SDK, so it runs anywhere Node and a
+JRE are available:
+
+```bash
+tools/fetch-android-tools.sh   # one-off: aapt2, smali.jar, a keystore
+npm run build:apk              # builds + signs public/downloads/stepwise.apk
+npm run verify:apk             # checks the artefact is a valid signed package
+```
+
+`npm run build:apk` runs five stages:
+
+| Stage                | What happens                                                              |
+| -------------------- | ------------------------------------------------------------------------- |
+| 1. web bundle        | `vite build` with `VITE_BASE=./` so asset paths resolve from `file://`   |
+| 2. asset staging     | the bundle is copied to `assets/www/` inside the package                  |
+| 3. smali → dex       | `android/smali/**` is assembled into `classes.dex`                        |
+| 4. resource linking  | `aapt2 compile` + `aapt2 link` produce the manifest and resource table    |
+| 5. signing           | `apk_sign_ts` applies the v1 (JAR), v2 and v3 signature schemes          |
+
+The Activity itself is written in **smali** (`android/smali/com/stepwise/game/`)
+rather than Java, so no Java compiler is needed — only a runtime.
+
+Because there is no platform `framework-res.apk` on the build machine, the
+linker is given a **synthetic framework** (`android/framework/res/values/attrs.xml`)
+that declares exactly the framework attributes the manifest uses. The resource
+IDs are still resolved against the real device framework at runtime.
+
+### Keeping it honest
+
+`tests/apk.test.ts` asserts against the shipped binary itself, not against the
+build script's output: valid zip, required members, DEX magic, relative asset
+paths, matching v1 manifest digests, and the v2/v3 signing blocks. It also
+asserts that every asset the page references is actually packaged.
+
+Two flags in `src/game/config.ts` control the download card:
+
+| Constant           | Meaning                                                                    |
+| ------------------ | -------------------------------------------------------------------------- |
+| `APK_DOWNLOAD_URL` | The route the button points at                                             |
+| `APK_AVAILABLE`    | `true` while a signed binary exists; `false` reverts the card to a notice |
+
+`tests/deploy.test.ts` asserts the two stay in sync with the filesystem, so the
+download route can never again point at a file that does not exist.
 
 ---
 

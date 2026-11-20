@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    Manifest for the synthetic linking framework. It is never shipped; it only
+    exists so `aapt2 link` has a package to attach the framework resource
+    symbols to (package id 0x01, which is the real framework package id).
+-->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android" package="android">
+</manifest>

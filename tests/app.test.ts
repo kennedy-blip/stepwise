@@ -180,6 +180,50 @@ describe('App shell', () => {
     win.dispatchEvent(new win.KeyboardEvent('keyup', { code: 'KeyD', key: 'd' }));
   });
 
+  it('fires native haptics while running inside the Android wrapper', async () => {
+    // The APK injects a `StepwiseNative` bridge; the game should use it for
+    // the haptics that accompany jumps and landings.
+    const pulses: number[] = [];
+    (win as unknown as { StepwiseNative: unknown }).StepwiseNative = {
+      vibrate: (ms: number) => pulses.push(ms),
+      isNative: () => true,
+      platform: () => 'android',
+      getTargetFps: () => 60,
+    };
+
+    await import('../src/main');
+    win.document.dispatchEvent(new win.Event('DOMContentLoaded'));
+    await Promise.resolve();
+
+    (win.document.getElementById('play-button') as unknown as HTMLButtonElement).click();
+
+    // Run right and jump: the jump must produce a haptic pulse.
+    win.dispatchEvent(new win.KeyboardEvent('keydown', { code: 'KeyD', key: 'd' }));
+
+    let time = performance.now();
+    let jumped = false;
+    for (let i = 0; i < 240 && pulses.length === 0; i++) {
+      const pending = rafCallbacks;
+      rafCallbacks = [];
+      time += 16.7;
+      for (const cb of pending) cb(time);
+      if (!jumped) {
+        jumped = true;
+        win.dispatchEvent(new win.KeyboardEvent('keydown', { code: 'Space', key: ' ' }));
+        setTimeout(() => undefined, 0);
+      }
+    }
+
+    win.dispatchEvent(new win.KeyboardEvent('keyup', { code: 'KeyD', key: 'd' }));
+    win.dispatchEvent(new win.KeyboardEvent('keyup', { code: 'Space', key: ' ' }));
+
+    expect(pulses.length).toBeGreaterThan(0);
+    for (const pulse of pulses) {
+      expect(pulse).toBeGreaterThan(0);
+      expect(pulse).toBeLessThanOrEqual(400);
+    }
+  });
+
   it('pauses and resumes with the Escape key', async () => {
     await import('../src/main');
     win.document.dispatchEvent(new win.Event('DOMContentLoaded'));

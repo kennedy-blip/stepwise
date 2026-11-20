@@ -16,14 +16,13 @@ export const APK_DOWNLOAD_URL = '/downloads/stepwise.apk';
 /**
  * Whether a real signed APK is present in `public/downloads/`.
  *
- * The deployment currently ships only `stepwise.apk.txt`, a plain-text
- * placeholder. Tapping download hands the browser a text file, and Android
- * then refuses to install it with "download failed". Rather than let the
- * player hit that error, the UI labels the button honestly while this is
- * false. Flip it to `true` when `public/downloads/stepwise.apk` exists and
- * the placeholder has been removed.
+ * `public/downloads/stepwise.apk` is built by `npm run build:apk` — a real,
+ * v1/v2/v3-signed Android package wrapping this exact web build in a
+ * full-screen WebView Activity. Because the binary genuinely ships, the
+ * download button installs the game rather than handing the player a text
+ * file.
  */
-export const APK_AVAILABLE = false;
+export const APK_AVAILABLE = true;
 
 /** Version string shown on the APK download card. */
 export const APP_VERSION = '1.0.0';

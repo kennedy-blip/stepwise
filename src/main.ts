@@ -17,7 +17,9 @@ import { detectDefaultPreset } from './engine/quality';
 import { UI } from './ui/hud';
 import { World } from './game/world';
 import { PHYSICS } from './game/config';
+import { vibrate } from './core/platform';
 import type { Difficulty, GameSettings, GraphicsPreset, SkyMood } from './core/types';
+import type { GameEvent } from './game/player';
 
 const STORAGE_KEY = 'stepwise.settings.v1';
 const BEST_KEY = 'stepwise.personalBest.v1';
@@ -393,12 +395,97 @@ class App {
   /** One fixed simulation step. */
   private simulateStep(dt: number): void {
     this.world.currentInput = this.input.state;
-    this.world.update(dt);
+    const events = this.world.update(dt);
+    for (const event of events) this.presentEvent(event);
     this.input.clearEdges();
 
     if (this.world.phase === 'playing' && this.world.outcome !== 'running') {
       this.endRun();
     }
+  }
+
+  /**
+   * Turns a simulation event into audio and haptics.
+   *
+   * The simulation stays free of presentation concerns: it only reports what
+   * happened, and this method decides how it should sound and feel.
+   */
+  private presentEvent(event: GameEvent): void {
+    switch (event.type) {
+      case 'footstep':
+        this.audio.footstep(event.material, Math.min(1, Math.abs(event.speed) / 900));
+        break;
+
+      case 'jump':
+        this.audio.jump();
+        this.pulse(12);
+        break;
+
+      case 'land':
+        this.audio.land(Math.min(1, event.impact / 900));
+        this.pulse(Math.round(10 + Math.min(1, event.impact / 900) * 45));
+        break;
+
+      case 'slide':
+      case 'roll':
+        this.audio.thud(1);
+        this.pulse(22);
+        break;
+
+      case 'vault':
+      case 'edgeLeap':
+      case 'slideUnder':
+        this.audio.whoosh(1);
+        this.pulse(16);
+        break;
+
+      case 'flow':
+        // A negative amount is a flow penalty: no chime, just a nudge.
+        if (event.amount > 0) {
+          this.audio.flowChime(event.amount >= 2 ? 3 : event.amount >= 1 ? 2 : 1);
+          this.pulse(14);
+        } else if (event.amount < 0) {
+          this.pulse(10);
+        }
+        break;
+
+      case 'flowSave':
+        this.audio.flowSave();
+        this.pulse(60);
+        break;
+
+      case 'stumble':
+        this.pulse(35);
+        break;
+
+      case 'break':
+        this.audio.crack(event.kind === 'glass' ? 'glass' : 'plank');
+        this.pulse(18);
+        break;
+
+      case 'crack':
+        this.audio.crack(event.kind);
+        this.pulse(14);
+        break;
+
+      case 'springLaunch':
+        this.audio.jump();
+        this.pulse(26);
+        break;
+
+      case 'ziplineGrab':
+        this.audio.whoosh(0.6);
+        break;
+
+      default:
+        break;
+    }
+  }
+
+  /** Fires a haptic pulse when the player has haptics enabled. */
+  private pulse(durationMs: number): void {
+    if (!this.settings.haptics) return;
+    vibrate(durationMs);
   }
 }
 

@@ -19,9 +19,16 @@
     <title>Stepwise — 2D Procedural IK Rooftop Parkour</title>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <!--
+      Loaded asynchronously so the game never waits on the network. The
+      stylesheet falls back to the platform monospace face, which is what the
+      installed Android app uses when it is offline.
+    -->
     <link
       href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700;800&display=swap"
       rel="stylesheet"
+      media="print"
+      onload="this.media='all'"
     />
     <link rel="stylesheet" href="/src/styles.css" />
   </head>
