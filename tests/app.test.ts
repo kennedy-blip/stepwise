@@ -41,7 +41,14 @@ const MARKUP = `
       </div>
     </div>
     <div id="pause-screen" class="overlay-layer">
-      <div class="pause-card"><button id="resume-button" class="play-button">RESUME</button></div>
+      <div class="pause-card">
+        <button id="resume-button" class="play-button">RESUME</button>
+        <div class="pause-menu">
+          <button id="pause-settings-button" class="menu-btn">Settings</button>
+          <button id="pause-restart-button" class="menu-btn">Restart Run</button>
+          <button id="pause-home-button" class="menu-btn">Home</button>
+        </div>
+      </div>
     </div>
     <div id="summary" class="overlay-layer">
       <div class="summary-card">
@@ -54,6 +61,10 @@ const MARKUP = `
           <div class="stat"><span class="stat-value" data-stat="saves">0</span></div>
         </div>
         <button id="again-button" class="play-button">RUN AGAIN</button>
+        <div class="summary-actions">
+          <button id="summary-settings-button" class="menu-btn">Settings</button>
+          <button id="summary-home-button" class="menu-btn">Home</button>
+        </div>
         <div class="summary-quick">
           <div class="quick-group"><div class="summary-diffs"></div></div>
           <div class="quick-group"><div class="summary-moods"></div></div>
@@ -221,6 +232,54 @@ describe('App shell', () => {
     win.dispatchEvent(new win.KeyboardEvent('keyup', { code: 'Escape', key: 'Escape' }));
     win.dispatchEvent(new win.KeyboardEvent('keydown', { code: 'Escape', key: 'Escape' }));
     expect(pause.classList.contains('is-visible')).toBe(false);
+  });
+
+  it('navigates from the pause menu: settings, then home', async () => {
+    await import('../src/main');
+    win.document.dispatchEvent(new win.Event('DOMContentLoaded'));
+    await Promise.resolve();
+    (win.document.getElementById('play-button') as unknown as HTMLButtonElement).click();
+
+    // Pause the run.
+    win.dispatchEvent(new win.KeyboardEvent('keydown', { code: 'Escape', key: 'Escape' }));
+    const pause = win.document.getElementById('pause-screen')!;
+    expect(pause.classList.contains('is-visible')).toBe(true);
+
+    // The pause menu opens the settings modal.
+    (win.document.getElementById('pause-settings-button') as unknown as HTMLButtonElement).click();
+    const settings = win.document.getElementById('settings')!;
+    expect(settings.classList.contains('is-visible')).toBe(true);
+    expect(pause.classList.contains('is-visible')).toBe(false);
+
+    // Closing the modal returns to the pause card, not to the action.
+    (win.document.getElementById('settings-close') as unknown as HTMLButtonElement).click();
+    expect(settings.classList.contains('is-visible')).toBe(false);
+    expect(pause.classList.contains('is-visible')).toBe(true);
+
+    // Home leaves the run and returns to the title screen.
+    (win.document.getElementById('pause-home-button') as unknown as HTMLButtonElement).click();
+    const title = win.document.getElementById('title-screen')!;
+    expect(title.classList.contains('is-visible')).toBe(true);
+    expect(pause.classList.contains('is-visible')).toBe(false);
+    expect(settings.classList.contains('is-visible')).toBe(false);
+  });
+
+  it('restarts the run from the pause menu', async () => {
+    await import('../src/main');
+    win.document.dispatchEvent(new win.Event('DOMContentLoaded'));
+    await Promise.resolve();
+    (win.document.getElementById('play-button') as unknown as HTMLButtonElement).click();
+
+    win.dispatchEvent(new win.KeyboardEvent('keydown', { code: 'Escape', key: 'Escape' }));
+    const pause = win.document.getElementById('pause-screen')!;
+    expect(pause.classList.contains('is-visible')).toBe(true);
+
+    (win.document.getElementById('pause-restart-button') as unknown as HTMLButtonElement).click();
+
+    // The restart drops the pause card and the HUD stays up.
+    expect(pause.classList.contains('is-visible')).toBe(false);
+    const hud = win.document.getElementById('hud')!;
+    expect(hud.classList.contains('is-visible')).toBe(true);
   });
 
   it('toggles the IK debug overlay with the I key', async () => {

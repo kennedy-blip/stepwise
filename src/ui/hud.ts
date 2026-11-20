@@ -53,6 +53,13 @@ export class UI {
   private titleDiffButtons!: HTMLButtonElement[];
   private titleMoodButtons!: HTMLButtonElement[];
 
+  /**
+   * Where the settings modal should send the user when it closes. The modal
+   * can be opened from the title screen, the pause menu or the run summary,
+   * and each of those has a different "back" destination.
+   */
+  private settingsReturn: 'title' | 'pause' | 'summary' = 'title';
+
   constructor(root: HTMLElement, settings: GameSettings) {
     this.refs = {
       root,
@@ -64,6 +71,13 @@ export class UI {
     };
     this.settings = settings;
     this.build();
+    // The UI handles its own "open settings" requests so the modal works
+    // whether it is triggered by the pause menu, the summary, or the app.
+    this.refs.root.addEventListener('stepwise:open-settings', ((
+      e: CustomEvent<'title' | 'pause' | 'summary'>,
+    ) => {
+      this.openSettings(e.detail ?? 'title');
+    }) as EventListener);
   }
 
   // ----------------------------------------------------------------------
@@ -72,7 +86,9 @@ export class UI {
   private build(): void {
     this.buildTitle();
     this.buildHud();
+    this.buildPauseMenu();
     this.buildSummary();
+    this.buildSummaryActions();
     this.buildSettings();
   }
 
@@ -181,6 +197,48 @@ export class UI {
       </div>`;
       hud.appendChild(touch);
     }
+  }
+
+  /**
+   * Wires the pause menu. The pause card is the player's escape hatch
+   * mid-run, so it needs a way back into the game, into the settings, and
+   * out to the title screen.
+   */
+  private buildPauseMenu(): void {
+    const pause = this.refs.pauseScreen;
+
+    pause
+      .querySelector<HTMLButtonElement>('#pause-settings-button')
+      ?.addEventListener('click', () => {
+        this.dispatchEvent(new CustomEvent('stepwise:open-settings', { detail: 'pause' }));
+      });
+    pause
+      .querySelector<HTMLButtonElement>('#pause-restart-button')
+      ?.addEventListener('click', () => {
+        this.dispatchEvent(new CustomEvent('stepwise:restart'));
+      });
+    pause.querySelector<HTMLButtonElement>('#pause-home-button')?.addEventListener('click', () => {
+      this.dispatchEvent(new CustomEvent('stepwise:home'));
+    });
+  }
+
+  /**
+   * Wires the run summary actions. A finished run should be able to leave
+   * for the title screen or adjust settings without starting another run.
+   */
+  private buildSummaryActions(): void {
+    const summary = this.refs.summary;
+
+    summary
+      .querySelector<HTMLButtonElement>('#summary-settings-button')
+      ?.addEventListener('click', () => {
+        this.dispatchEvent(new CustomEvent('stepwise:open-settings', { detail: 'summary' }));
+      });
+    summary
+      .querySelector<HTMLButtonElement>('#summary-home-button')
+      ?.addEventListener('click', () => {
+        this.dispatchEvent(new CustomEvent('stepwise:home'));
+      });
   }
 
   private buildSummary(): void {
@@ -508,6 +566,9 @@ export class UI {
     this.refs.hud.classList.remove('is-visible');
     this.refs.summary.classList.remove('is-visible');
     this.refs.pauseScreen.classList.remove('is-visible');
+    // The settings modal is always dismissed on the way home so it can
+    // never be left stranded on top of the title screen.
+    this.refs.settings.classList.remove('is-visible');
   }
 
   showHud(): void {
@@ -525,12 +586,32 @@ export class UI {
     this.refs.pauseScreen.classList.remove('is-visible');
   }
 
-  openSettings(): void {
+  openSettings(from: 'title' | 'pause' | 'summary' = 'title'): void {
+    this.settingsReturn = from;
+    // Hide the screen underneath so the modal is the only thing on screen;
+    // it is restored when the modal closes.
+    if (from === 'pause') {
+      this.refs.pauseScreen.classList.remove('is-visible');
+    } else if (from === 'summary') {
+      this.refs.summary.classList.remove('is-visible');
+    }
     this.refs.settings.classList.add('is-visible');
     this.syncAllMoods();
   }
 
   closeSettings(): void {
+    this.refs.settings.classList.remove('is-visible');
+    // Return the player to whatever screen they opened settings from, so
+    // closing the modal mid-run does not drop them back into the action.
+    if (this.settingsReturn === 'pause') {
+      this.refs.pauseScreen.classList.add('is-visible');
+    } else if (this.settingsReturn === 'summary') {
+      this.refs.summary.classList.add('is-visible');
+    }
+  }
+
+  /** Dismisses the settings modal without restoring the previous screen. */
+  dismissSettings(): void {
     this.refs.settings.classList.remove('is-visible');
   }
 

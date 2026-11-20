@@ -51,6 +51,11 @@ function buildMarkup(): string {
         <div class="pause-card">
           <h2>PAUSED</h2>
           <button id="resume-button" class="play-button">RESUME</button>
+          <div class="pause-menu">
+            <button id="pause-settings-button" class="menu-btn">Settings</button>
+            <button id="pause-restart-button" class="menu-btn">Restart Run</button>
+            <button id="pause-home-button" class="menu-btn">Home</button>
+          </div>
         </div>
       </div>
 
@@ -65,6 +70,10 @@ function buildMarkup(): string {
             <div class="stat"><span class="stat-value" data-stat="saves">0</span></div>
           </div>
           <button id="again-button" class="play-button">RUN AGAIN</button>
+          <div class="summary-actions">
+            <button id="summary-settings-button" class="menu-btn">Settings</button>
+            <button id="summary-home-button" class="menu-btn">Home</button>
+          </div>
           <div class="summary-quick">
             <div class="quick-group"><div class="summary-diffs"></div></div>
             <div class="quick-group"><div class="summary-moods"></div></div>
@@ -278,5 +287,119 @@ describe('UI layer', () => {
     expect(card).toBeTruthy();
     expect(card.getAttribute('href')).toBe(APK_DOWNLOAD_URL);
     expect(card.getAttribute('download')).toBe('stepwise.apk');
+  });
+
+  // ----------------------------------------------------------------------
+  // Navigation: pause menu, summary actions and the settings round-trip.
+  // ----------------------------------------------------------------------
+
+  it('offers Home, Settings and Restart in the pause menu', async () => {
+    const { UI } = await import('../src/ui/hud');
+    new UI(root, defaultSettings());
+
+    const pause = root.querySelector('#pause-screen')!;
+    expect(pause.querySelector('#pause-home-button')).toBeTruthy();
+    expect(pause.querySelector('#pause-settings-button')).toBeTruthy();
+    expect(pause.querySelector('#pause-restart-button')).toBeTruthy();
+  });
+
+  it('dispatches a home request from the pause menu', async () => {
+    const { UI } = await import('../src/ui/hud');
+    new UI(root, defaultSettings());
+
+    let home = 0;
+    root.addEventListener('stepwise:home', () => {
+      home += 1;
+    });
+
+    (root.querySelector('#pause-home-button') as HTMLButtonElement).click();
+    expect(home).toBe(1);
+  });
+
+  it('dispatches a restart request from the pause menu', async () => {
+    const { UI } = await import('../src/ui/hud');
+    new UI(root, defaultSettings());
+
+    let restarts = 0;
+    root.addEventListener('stepwise:restart', () => {
+      restarts += 1;
+    });
+
+    (root.querySelector('#pause-restart-button') as HTMLButtonElement).click();
+    expect(restarts).toBe(1);
+  });
+
+  it('opens the settings modal from the pause menu and returns to pause on close', async () => {
+    const { UI } = await import('../src/ui/hud');
+    const ui = new UI(root, defaultSettings());
+
+    ui.showPause();
+
+    // The pause menu asks the app to open settings with `pause` as the
+    // return destination.
+    root.dispatchEvent(new CustomEvent('stepwise:open-settings', { detail: 'pause' }));
+
+    const settings = root.querySelector('#settings')!;
+    const pause = root.querySelector('#pause-screen')!;
+    expect(settings.classList.contains('is-visible')).toBe(true);
+    // The pause card hides while the modal is up.
+    expect(pause.classList.contains('is-visible')).toBe(false);
+
+    ui.closeSettings();
+    expect(settings.classList.contains('is-visible')).toBe(false);
+    // Closing returns the player to the pause card.
+    expect(pause.classList.contains('is-visible')).toBe(true);
+  });
+
+  it('opens the settings modal from the run summary and returns to the summary', async () => {
+    const { UI } = await import('../src/ui/hud');
+    const ui = new UI(root, defaultSettings());
+
+    const summary = root.querySelector('#summary')!;
+    summary.classList.add('is-visible');
+
+    root.dispatchEvent(new CustomEvent('stepwise:open-settings', { detail: 'summary' }));
+
+    const settings = root.querySelector('#settings')!;
+    expect(settings.classList.contains('is-visible')).toBe(true);
+    expect(summary.classList.contains('is-visible')).toBe(false);
+
+    ui.closeSettings();
+    expect(summary.classList.contains('is-visible')).toBe(true);
+  });
+
+  it('offers Home and Settings on the run summary', async () => {
+    const { UI } = await import('../src/ui/hud');
+    new UI(root, defaultSettings());
+
+    const summary = root.querySelector('#summary')!;
+    expect(summary.querySelector('#summary-home-button')).toBeTruthy();
+    expect(summary.querySelector('#summary-settings-button')).toBeTruthy();
+  });
+
+  it('dispatches a home request from the run summary', async () => {
+    const { UI } = await import('../src/ui/hud');
+    new UI(root, defaultSettings());
+
+    let home = 0;
+    root.addEventListener('stepwise:home', () => {
+      home += 1;
+    });
+
+    (root.querySelector('#summary-home-button') as HTMLButtonElement).click();
+    expect(home).toBe(1);
+  });
+
+  it('always dismisses the settings modal when returning to the title screen', async () => {
+    const { UI } = await import('../src/ui/hud');
+    const ui = new UI(root, defaultSettings());
+
+    ui.openSettings('pause');
+    ui.showTitle();
+
+    const settings = root.querySelector('#settings')!;
+    const title = root.querySelector('#title-screen')!;
+    expect(settings.classList.contains('is-visible')).toBe(false);
+    expect(title.classList.contains('is-visible')).toBe(true);
   });
 });

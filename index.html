@@ -83,6 +83,20 @@
           <h2>PAUSED</h2>
           <p>Press <kbd>Esc</kbd> to resume or <kbd>R</kbd> to restart.</p>
           <button id="resume-button" class="play-button">RESUME</button>
+          <div class="pause-menu">
+            <button id="pause-settings-button" class="menu-btn">
+              <span class="menu-icon">&#9881;</span>
+              <span class="menu-label">Settings</span>
+            </button>
+            <button id="pause-restart-button" class="menu-btn">
+              <span class="menu-icon">&#8635;</span>
+              <span class="menu-label">Restart Run</span>
+            </button>
+            <button id="pause-home-button" class="menu-btn">
+              <span class="menu-icon">&#8962;</span>
+              <span class="menu-label">Home</span>
+            </button>
+          </div>
         </div>
       </div>
 
@@ -110,6 +124,17 @@
 
           <button id="again-button" class="play-button">RUN AGAIN</button>
           <p class="summary-hint"><kbd>Space</kbd> / <kbd>Enter</kbd> / tap to run again</p>
+
+          <div class="summary-actions">
+            <button id="summary-settings-button" class="menu-btn">
+              <span class="menu-icon">&#9881;</span>
+              <span class="menu-label">Settings</span>
+            </button>
+            <button id="summary-home-button" class="menu-btn">
+              <span class="menu-icon">&#8962;</span>
+              <span class="menu-label">Home</span>
+            </button>
+          </div>
 
           <div class="summary-quick">
             <div class="quick-group">

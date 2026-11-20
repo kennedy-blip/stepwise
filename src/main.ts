@@ -136,7 +136,6 @@ class App {
         case 'debug':
           this.settings.showDebug = !this.settings.showDebug;
           this.saveSettings();
-          this.ui.closeSettings();
           break;
         default:
           break;
@@ -147,6 +146,7 @@ class App {
     this.root.addEventListener('stepwise:play', () => this.startRun());
     this.root.addEventListener('stepwise:restart', () => this.restartRun());
     this.root.addEventListener('stepwise:pause', () => this.togglePause());
+    this.root.addEventListener('stepwise:home', () => this.goHome());
     this.root.addEventListener('stepwise:difficulty', (e) => {
       const d = (e as CustomEvent<Difficulty>).detail;
       this.settings.difficulty = d;
@@ -243,6 +243,20 @@ class App {
       this.ui.hidePause();
       this.lastTime = performance.now();
     }
+  }
+
+  /**
+   * Leaves the current run and returns to the title screen. The world goes
+   * back to its title phase so the menu shows the live idle scene again.
+   */
+  private goHome(): void {
+    this.paused = false;
+    this.accumulator = 0;
+    this.lastTime = performance.now();
+    this.ui.hidePause();
+    this.ui.dismissSettings();
+    this.world.toTitle();
+    this.ui.showTitle();
   }
 
   private endRun(): void {

@@ -22,7 +22,7 @@ npm run dev      # http://localhost:5173
 The runner is an articulated skeleton whose legs and arms are driven by a
 real **two-bone inverse kinematics solver** built on the Law of Cosines. Every
 frame, each foot casts a ray down into the terrain, finds the exact surface
-height *and* the surface normal, and the leg is solved so the sole sits flush
+height _and_ the surface normal, and the leg is solved so the sole sits flush
 on the slope. The pelvis lowers and rises automatically so neither leg ever
 over-extends while crossing steps, vents and AC units.
 
@@ -44,18 +44,31 @@ The total shipped bundle is **~24 KB gzipped**, with zero external assets.
 
 ### Desktop
 
-| Key | Action |
-| --- | --- |
-| `A` / `D` or `←` / `→` | Accelerate, pace, brake |
-| `Space` / `W` / `↑` | Jump (tap for a short hop, hold for full height) · Mantle / Vault |
-| `S` / `↓` / `Shift` | Crouch · Parkour slide · Mid-air tuck-roll |
-| `R` | Instant restart |
-| `Esc` | Pause |
-| `I` | Toggle the IK skeleton & raycast debug overlay |
+| Key                    | Action                                                            |
+| ---------------------- | ----------------------------------------------------------------- |
+| `A` / `D` or `←` / `→` | Accelerate, pace, brake                                           |
+| `Space` / `W` / `↑`    | Jump (tap for a short hop, hold for full height) · Mantle / Vault |
+| `S` / `↓` / `Shift`    | Crouch · Parkour slide · Mid-air tuck-roll                        |
+| `R`                    | Instant restart                                                   |
+| `Esc`                  | Pause                                                             |
+| `I`                    | Toggle the IK skeleton & raycast debug overlay                    |
+
+### Pause menu
+
+`Esc` (or the ❙❙ button) freezes the run and opens a menu with:
+
+- **RESUME** — back into the run
+- **SETTINGS** — audio, difficulty, sky mood and developer options; closing
+  the modal returns you to the pause menu, not back into the action
+- **RESTART RUN** — start the run again from the beginning
+- **HOME** — abandon the run and return to the title screen
+
+The run summary carries the same **SETTINGS** and **HOME** actions, so a
+finished run can be left for the title screen without starting another one.
 
 ### Mobile
 
-- **Left thumb** — drag horizontally to pace. An optional *Auto-Sprint Assist*
+- **Left thumb** — drag horizontally to pace. An optional _Auto-Sprint Assist_
   toggle in Settings removes the need to hold anything at all.
 - **Right thumb** — tap to jump, hold for height, swipe down to slide or
   tuck-roll.
@@ -67,18 +80,18 @@ The total shipped bundle is **~24 KB gzipped**, with zero external assets.
 
 Flow is the game's only health bar and doubles as a momentum multiplier.
 
-| Action | Flow |
-| --- | --- |
-| Clean slope landing or timed tuck-roll | `+15` |
-| Clean ledge vault or slide-under | `+20` |
-| Edge leap (jumping within 16 px of a lip) | `+25` |
-| Hard landing / stumble | `-40` |
-| Standing still | `-5/sec` |
+| Action                                    | Flow     |
+| ----------------------------------------- | -------- |
+| Clean slope landing or timed tuck-roll    | `+15`    |
+| Clean ledge vault or slide-under          | `+20`    |
+| Edge leap (jumping within 16 px of a lip) | `+25`    |
+| Hard landing / stumble                    | `-40`    |
+| Standing still                            | `-5/sec` |
 
-| Tier | Range | Effect |
-| --- | --- | --- |
-| **Steady** | 0–33% | Base speed, muted scarf |
-| **In Stride** | 34–79% | +15% top speed, longer leaps, amber scarf |
+| Tier          | Range   | Effect                                                       |
+| ------------- | ------- | ------------------------------------------------------------ |
+| **Steady**    | 0–33%   | Base speed, muted scarf                                      |
+| **In Stride** | 34–79%  | +15% top speed, longer leaps, amber scarf                    |
 | **Pure Flow** | 80–100% | +25% top speed, glowing rim-light trail, **Flow Save armed** |
 
 At Pure Flow a fatal mistake — a missed ledge or a mistimed drop — triggers a
@@ -89,13 +102,13 @@ roof, costing 50% of the meter instead of ending the run.
 
 ## Difficulty
 
-| | Easy — Rooftop Cruise | Medium — City Flow | Hard — Razorline |
-| --- | --- | --- | --- |
-| Coyote time | 160 ms | 100 ms | 60 ms |
-| Input buffer | 180 ms | 120 ms | 80 ms |
-| Base / max speed | 320 / 480 px/s | 380 / 580 px/s | 440 / 680 px/s |
-| Gaps & drops | Narrow, gentle | Balanced, multi-tier | Wide, steep |
-| Hazards | Static roofs, ramps, vents, slow planks | + skylights, ziplines, planks, spring awnings | + fast-cracking planks, fragile glass, tight pipes |
+|                  | Easy — Rooftop Cruise                   | Medium — City Flow                            | Hard — Razorline                                   |
+| ---------------- | --------------------------------------- | --------------------------------------------- | -------------------------------------------------- |
+| Coyote time      | 160 ms                                  | 100 ms                                        | 60 ms                                              |
+| Input buffer     | 180 ms                                  | 120 ms                                        | 80 ms                                              |
+| Base / max speed | 320 / 480 px/s                          | 380 / 580 px/s                                | 440 / 680 px/s                                     |
+| Gaps & drops     | Narrow, gentle                          | Balanced, multi-tier                          | Wide, steep                                        |
+| Hazards          | Static roofs, ramps, vents, slow planks | + skylights, ziplines, planks, spring awnings | + fast-cracking planks, fragile glass, tight pipes |
 
 ---
 
@@ -141,6 +154,7 @@ npm run format      # Prettier
 npx tsx tools/rig-check.ts                    # bone-length + foot-contact audit
 npx tsx tools/render-png.ts out.png 900 dusk  # PNG snapshot of the real renderer
 npx tsx tools/render-svg.ts out.svg 900 dusk  # SVG snapshot of the scene
+npx tsx tools/render-ui.ts outdir           # PNG snapshots of the UI overlays
 npx tsx tools/autopilot.ts                    # state-driven Medium pilot
 ```
 

@@ -133,6 +133,38 @@ export class World {
   }
 
   /**
+   * Abandons the current run and returns the world to its title state, so
+   * the title screen can show the live idle scene again.
+   */
+  toTitle(): void {
+    this.phase = 'title';
+    this.outcome = 'running';
+    this.deathReason = '';
+    this.hitStopTimer = 0;
+    this.particles = [];
+    this.labels = [];
+
+    // Rebuild the level so the idle scene is a fresh rooftop rather than
+    // wherever the abandoned run happened to end.
+    const tuning = DIFFICULTY_TUNING[this.difficulty];
+    this.flow = createFlowState();
+    this.buildLevel();
+
+    const spawnX = this.terrain.minX + 120;
+    this.player = new Player({
+      x: spawnX,
+      y: this.terrain.groundAt(spawnX, 0) ?? 0,
+      tuning,
+      difficulty: this.difficulty,
+      terrain: this.terrain,
+      flow: this.flow,
+    });
+    this.player.setStartX(spawnX);
+    this.camera.x = this.player.x;
+    this.camera.y = this.player.y;
+  }
+
+  /**
    * Advances the world by a fixed timestep.
    * `dt` is always the fixed simulation step (1/120 s) scaled by timeScale.
    */

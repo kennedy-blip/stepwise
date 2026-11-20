@@ -76,7 +76,7 @@ than my origin?" before you write the comparison.
   reachable distance — see the `minReach` derivation in the file.
 - When the target is **out of reach**, the chain fully extends along the
   root→target direction and the end effector sits at the far end of that
-  straight chain — *not* on the target. Bone lengths must stay exact.
+  straight chain — _not_ on the target. Bone lengths must stay exact.
 - `src/game/rig.ts` is the only caller. It must never mutate a bone; it feeds
   new targets in and reads positions out.
 
@@ -111,7 +111,7 @@ npx tsx tools/rig-check.ts
   x-ranges and reserves a generous region per piece (`objW + 140`) because
   some pieces add geometry beyond their own width (ramp landing pads).
 - **Overhead pipes are placed in a dedicated pass, last.** Their clearance
-  must be measured against the *final* roof surface across their whole span
+  must be measured against the _final_ roof surface across their whole span
   (a pipe buried in an AC unit is impassable). The `surfaceUnder` helper does
   this.
 - Everything must be reachable by a downward raycast. If you add a new
@@ -156,7 +156,29 @@ npx tsx tools/rig-check.ts
 
 ---
 
-## 8. Conventions
+## 8. The overlay screens (`src/ui/hud.ts`, `index.html`)
+
+The game has five overlay layers: **title**, **HUD**, **pause**, **summary**
+and **settings**. They are plain markup in `index.html`; `src/ui/hud.ts`
+binds behaviour to it and `src/main.ts` owns the state transitions.
+
+- **The settings modal is reachable from three places** — the title screen,
+  the pause menu and the run summary. `UI.openSettings(from)` records where
+  it was opened from, and `UI.closeSettings()` restores that screen. Never
+  close the modal with a plain `classList.remove` from elsewhere; use
+  `closeSettings()` (restores) or `dismissSettings()` (does not).
+- **The pause menu must always offer a way out.** RESUME, SETTINGS, RESTART
+  RUN and HOME are the expected set. `HOME` calls `App.goHome()`, which
+  returns the world to its title phase via `World.toTitle()`.
+- The UI dispatches `stepwise:*` events on the app root; `src/main.ts`
+  listens for them. The UI handles its own `stepwise:open-settings` so the
+  modal works without the app shell.
+- When you add a screen, add it to `UI.showTitle` / `showHud` / `showPause`
+  so the overlays never stack.
+
+---
+
+## 9. Conventions
 
 - TypeScript `strict: true`. No `any`. No non-null assertions in `src/`
   (they are allowed in `tests/`).
@@ -169,22 +191,22 @@ npx tsx tools/rig-check.ts
 
 ---
 
-## 9. Commands
+## 10. Commands
 
-| Command | What it does |
-| --- | --- |
-| `npm run dev` | Vite dev server on `:5173` |
-| `npm run build` | Typecheck then production build into `dist/` |
-| `npm run preview` | Serve the built site on `:4173` |
-| `npm test` | Run the Vitest suite once |
-| `npm run test:watch` | Vitest in watch mode |
-| `npm run typecheck` | `tsc --noEmit` |
-| `npm run lint` | ESLint over the project |
-| `npm run format` | Prettier write |
+| Command              | What it does                                 |
+| -------------------- | -------------------------------------------- |
+| `npm run dev`        | Vite dev server on `:5173`                   |
+| `npm run build`      | Typecheck then production build into `dist/` |
+| `npm run preview`    | Serve the built site on `:4173`              |
+| `npm test`           | Run the Vitest suite once                    |
+| `npm run test:watch` | Vitest in watch mode                         |
+| `npm run typecheck`  | `tsc --noEmit`                               |
+| `npm run lint`       | ESLint over the project                      |
+| `npm run format`     | Prettier write                               |
 
 ---
 
-## 10. Deploying
+## 11. Deploying
 
 - `vercel.json` holds the build command, the output directory and the caching
   headers. The `/downloads/` route serves the Android APK.
@@ -197,7 +219,7 @@ npx tsx tools/rig-check.ts
 
 ---
 
-## 11. Debugging aids
+## 12. Debugging aids
 
 - `I` toggles the IK skeleton, raycasts and hitbox overlay in game.
 - `npx tsx tools/rig-check.ts` — validates bone lengths and foot contact
@@ -205,6 +227,9 @@ npx tsx tools/rig-check.ts
 - `npx tsx tools/render-svg.ts out.svg <frames> <mood>` — dumps the scene as
   SVG using the real world→screen transform, for inspecting composition
   without a browser.
+- `npx tsx tools/render-ui.ts [outdir]` — renders PNG snapshots of the
+  title / pause / summary / settings overlays, so the UI can be reviewed
+  as an image without a browser.
 - `npx tsx tools/render-png.ts out.png <frames> <mood> <difficulty>` — renders a
   real PNG snapshot of the shipped `Renderer` by driving it through a minimal
   Canvas2D implementation (transforms, gradients, paths, arcs, strokes). Use
