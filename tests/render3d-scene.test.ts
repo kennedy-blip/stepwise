@@ -111,6 +111,21 @@ describe('World3D — rooftop geometry', () => {
     expect(propGroups.length).toBe(world.terrain.hazards.length);
   });
 
+  it('survives a level rebuild without throwing', () => {
+    // Rebuilding the level replaces every hazard with fresh objects, which
+    // retires the old prop groups. The retirement path must not mutate a
+    // child list while walking it: `Object3D.traverse` caches
+    // `children.length` up front, so removing a child mid-walk makes it
+    // index past the end and crash the render loop every single frame.
+    for (let round = 0; round < 3; round++) {
+      world.start();
+      for (let i = 0; i < 120; i++) {
+        world.update(1 / 60);
+        expect(() => world3d.sync(world.terrain, world.player.x)).not.toThrow();
+      }
+    }
+  });
+
   it('pools geometry so the buffer count stays bounded', () => {
     // Scroll a long way: the number of distinct geometry buffers must not
     // grow with the number of props, or long runs would stutter on GC.
@@ -197,6 +212,116 @@ describe('Humanoid3D — articulated runner', () => {
     expect(humanoid.contactShadow.visible).toBe(true);
     // The shadow sits a hair above the surface to avoid z-fighting.
     expect(humanoid.contactShadow.position.y).toBeCloseTo(simY(ground!) + 0.012, 5);
+  });
+
+  it('anchors the feet, hands and head exactly on the rig joints', () => {
+    // Drive the runner through run / air / stumble so every limb state is
+    // exercised. Each anchor must land on its rig joint to the millimetre:
+    // an offset here is what made the runner look like a blob rather than
+    // a person.
+    let t = 0;
+    let worstFoot = 0;
+    let worstHand = 0;
+    let worstNeck = 0;
+    const seen = new Set<string>();
+
+    for (let i = 0; i < 900; i++) {
+      t += 1 / 60;
+      world.currentInput = {
+        moveX: 1,
+        jumpHeld: t % 3 < 0.2,
+        jumpPressed: false,
+        crouchHeld: t % 5 > 4.6,
+        crouchPressed: false,
+      };
+      world.update(1 / 60);
+      humanoid.update(world.player.rig, world.flow.tier);
+      humanoid.group.updateMatrixWorld(true);
+      seen.add(world.player.state);
+
+      const rig = world.player.rig;
+      const internals = humanoid as unknown as {
+        footL: THREE.Group;
+        handL: THREE.Group;
+        neck: THREE.Group;
+      };
+
+      const foot = new THREE.Vector3().setFromMatrixPosition(internals.footL.matrixWorld);
+      const hand = new THREE.Vector3().setFromMatrixPosition(internals.handL.matrixWorld);
+      const neck = new THREE.Vector3().setFromMatrixPosition(internals.neck.matrixWorld);
+
+      // The foot is anchored to the SOLVED ankle (the IK clamps the chain
+      // when the target is out of reach).
+      const ankle = rig.leftLeg?.end ?? rig.leftFoot.ankle;
+      worstFoot = Math.max(
+        worstFoot,
+        foot.distanceTo(new THREE.Vector3(simX(ankle.x), simY(ankle.y), -0.15)),
+      );
+      worstHand = Math.max(
+        worstHand,
+        hand.distanceTo(
+          new THREE.Vector3(simX(rig.leftHand.wrist.x), simY(rig.leftHand.wrist.y), -0.15),
+        ),
+      );
+      worstNeck = Math.max(worstNeck, Math.abs(neck.y - simY(rig.neck.y)));
+    }
+
+    expect(seen.size).toBeGreaterThan(1);
+    expect(worstFoot).toBeLessThan(0.01);
+    expect(worstHand).toBeLessThan(0.01);
+    expect(worstNeck).toBeLessThan(0.01);
+  });
+
+  it('points every limb along its bone', () => {
+    // The limb meshes run along local -Y, so the bone angle must be
+    // atan2(dy, dx) + PI/2. Using -PI/2 rotated every bone backwards and
+    // splayed the runner's limbs.
+    for (let i = 0; i < 120; i++) {
+      world.update(1 / 60);
+      humanoid.update(world.player.rig, world.flow.tier);
+    }
+    humanoid.group.updateMatrixWorld(true);
+
+    const rig = world.player.rig;
+    const internals = humanoid as unknown as {
+      thighL: THREE.Group;
+      shinL: THREE.Group;
+      upperArmL: THREE.Group;
+    };
+
+    const boneDir = (group: THREE.Group): THREE.Vector3 =>
+      new THREE.Vector3(0, -1, 0).transformDirection(group.matrixWorld);
+
+    const want = (a: { x: number; y: number }, b: { x: number; y: number }): THREE.Vector3 =>
+      new THREE.Vector3(simX(b.x) - simX(a.x), simY(b.y) - simY(a.y), 0).normalize();
+
+    if (rig.leftLeg) {
+      expect(
+        boneDir(internals.thighL).dot(want(rig.leftLeg.root, rig.leftLeg.joint)),
+      ).toBeGreaterThan(0.999);
+      expect(
+        boneDir(internals.shinL).dot(want(rig.leftLeg.joint, rig.leftLeg.end)),
+      ).toBeGreaterThan(0.999);
+    }
+    if (rig.leftArm) {
+      expect(
+        boneDir(internals.upperArmL).dot(want(rig.leftArm.root, rig.leftArm.joint)),
+      ).toBeGreaterThan(0.999);
+    }
+  });
+
+  it('has a human silhouette, not a sprawled blob', () => {
+    for (let i = 0; i < 120; i++) {
+      world.update(1 / 60);
+      humanoid.update(world.player.rig, world.flow.tier);
+    }
+    humanoid.group.updateMatrixWorld(true);
+
+    const size = new THREE.Box3().setFromObject(humanoid.group).getSize(new THREE.Vector3());
+    const ratio = size.x / size.y;
+    // A running human is roughly 0.25-0.40 as wide as they are tall.
+    expect(ratio).toBeGreaterThan(0.15);
+    expect(ratio).toBeLessThan(0.5);
   });
 
   it('hides the contact shadow when there is no ground below', () => {

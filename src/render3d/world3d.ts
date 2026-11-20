@@ -614,11 +614,13 @@ export class World3D {
    * buffers stay available for the next prop that needs them.
    */
   private releaseGroup(group: THREE.Group): void {
-    group.traverse((obj) => {
-      if (obj instanceof THREE.Mesh) {
-        obj.removeFromParent();
-      }
-    });
+    // NOTE: the children are collected FIRST and removed afterwards.
+    // `Object3D.traverse` captures `children.length` before iterating, so
+    // removing a child while traversing splices the array out from under
+    // the loop and it reads past the end. Collect, then remove.
+    for (const obj of collectMeshes(group)) {
+      obj.removeFromParent();
+    }
   }
 
   /**
@@ -628,12 +630,10 @@ export class World3D {
    * background city towers.
    */
   private disposeGroup(group: THREE.Group): void {
-    group.traverse((obj) => {
-      if (obj instanceof THREE.Mesh) {
-        obj.geometry.dispose();
-        obj.removeFromParent();
-      }
-    });
+    for (const obj of collectMeshes(group)) {
+      obj.geometry.dispose();
+      obj.removeFromParent();
+    }
   }
 
   /** Disposes every GPU resource owned by the world. */
@@ -661,4 +661,19 @@ export class World3D {
     for (const mat of Object.values(this.propMaterials)) mat.dispose();
     this.disposeGeometryPool();
   }
+}
+
+/**
+ * Collects every mesh under a node into an array.
+ *
+ * The array must be built before any removal happens: `Object3D.traverse`
+ * caches `children.length` up front, so mutating the child list during the
+ * walk makes it index past the end of the array.
+ */
+function collectMeshes(root: THREE.Object3D): THREE.Mesh[] {
+  const meshes: THREE.Mesh[] = [];
+  root.traverse((obj) => {
+    if (obj instanceof THREE.Mesh) meshes.push(obj);
+  });
+  return meshes;
 }
