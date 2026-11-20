@@ -100,6 +100,7 @@ function makeCanvasContext(): Record<string, unknown> {
     rotate: noop,
     beginPath: noop,
     closePath: noop,
+    clip: noop,
     moveTo: noop,
     lineTo: noop,
     arc: noop,

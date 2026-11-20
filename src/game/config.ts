@@ -310,6 +310,19 @@ export interface SkyPalette {
   particleColor: string;
   particleRate: number;
   accent: string;
+  /**
+   * Atmospheric perspective tint per parallax layer. `far` is the haze
+   * colour distant buildings dissolve into; `mid` and `near` use progressively
+   * weaker washes. Keeping these in the palette means each city mood can
+   * disagree about how much air sits between the viewer and the skyline.
+   */
+  haze: { far: string; mid: string; near: string };
+  /** Colour of the ground-fog band that pools at the base of the skyline. */
+  groundHaze: string;
+  /** Vertical placement of the far city horizon as a fraction of viewport height. */
+  horizonY: number;
+  /** Strength of the sun's horizon bloom, 0 disables it. */
+  horizonGlow: number;
 }
 
 export const SKY_MOODS: Record<SkyMood, SkyPalette> = {
@@ -330,6 +343,14 @@ export const SKY_MOODS: Record<SkyMood, SkyPalette> = {
     particleColor: 'rgba(255, 220, 180, 0.5)',
     particleRate: 12,
     accent: '#ffb45c',
+    haze: {
+      far: 'rgba(122, 78, 112, 0.62)',
+      mid: 'rgba(104, 66, 100, 0.36)',
+      near: 'rgba(86, 54, 84, 0.16)',
+    },
+    groundHaze: 'rgba(196, 122, 118, 0.5)',
+    horizonY: 0.62,
+    horizonGlow: 0.55,
   },
   rain: {
     id: 'rain',
@@ -348,6 +369,14 @@ export const SKY_MOODS: Record<SkyMood, SkyPalette> = {
     particleColor: 'rgba(150, 210, 255, 0.55)',
     particleRate: 55,
     accent: '#5fe0ff',
+    haze: {
+      far: 'rgba(24, 44, 92, 0.7)',
+      mid: 'rgba(16, 30, 68, 0.42)',
+      near: 'rgba(10, 18, 44, 0.2)',
+    },
+    groundHaze: 'rgba(46, 92, 158, 0.46)',
+    horizonY: 0.66,
+    horizonGlow: 0.3,
   },
   dawn: {
     id: 'dawn',
@@ -366,6 +395,14 @@ export const SKY_MOODS: Record<SkyMood, SkyPalette> = {
     particleColor: 'rgba(255,255,255,0.3)',
     particleRate: 0,
     accent: '#cfe6ea',
+    haze: {
+      far: 'rgba(196, 212, 218, 0.72)',
+      mid: 'rgba(168, 187, 196, 0.44)',
+      near: 'rgba(140, 160, 172, 0.2)',
+    },
+    groundHaze: 'rgba(214, 226, 228, 0.62)',
+    horizonY: 0.58,
+    horizonGlow: 0.24,
   },
 };
 

@@ -16,3 +16,9 @@ npm-debug.log*
 # Headless render snapshots produced by tools/render-png.ts
 preview-*.png
 scene.png
+
+# Headless UI overlay snapshots produced by tools/render-ui.ts
+ui-*.png/
+pause.png
+settings.png
+summary.png

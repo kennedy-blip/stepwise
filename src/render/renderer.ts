@@ -17,7 +17,8 @@
 import { clamp, lerp } from '../core/math';
 import { CAMERA, FLOW_COLORS, RUNNER_COLORS, SKY_MOODS } from '../game/config';
 import { slabCorners } from '../physics/terrain';
-import type { SkyMood } from '../core/types';
+import type { SkyMood, Vec2 } from '../core/types';
+import type { SkyPalette } from '../game/config';
 import type { World } from '../game/world';
 import type { Player } from '../game/player';
 
@@ -119,13 +120,48 @@ export class Renderer {
 
     this.drawSky(palette.skyTop, palette.skyMid, palette.skyBottom);
     this.drawCelestial(palette.sun, palette.sunGlow);
+    this.drawHorizonGlow(palette);
 
     if (palette.particle !== 'none') {
       this.drawWeather(palette.particleColor, palette.particleRate, camera);
     }
 
-    this.drawCityLayer(palette.farCity, palette.window, 0.18, camera, 0.55);
-    this.drawCityLayer(palette.midCity, palette.window, 0.35, camera, 0.8);
+    // Three parallax layers, each sitting on its own horizon and scaled
+    // differently, so the city recedes into the distance instead of reading
+    // as one flat band of towers.
+    const horizon = this.height * palette.horizonY;
+    this.drawCityLayer(
+      palette.farCity,
+      palette.window,
+      0.1,
+      camera,
+      0.42,
+      palette.haze.far,
+      horizon - 46,
+      -220,
+    );
+    this.drawCityLayer(
+      palette.midCity,
+      palette.window,
+      0.26,
+      camera,
+      0.66,
+      palette.haze.mid,
+      horizon + 6,
+      140,
+    );
+    this.drawCityLayer(
+      palette.nearCity,
+      palette.window,
+      0.44,
+      camera,
+      0.95,
+      palette.haze.near,
+      horizon + 74,
+      -70,
+    );
+
+    this.drawGroundHaze(palette, horizon);
 
     this.drawTerrain(world, camera);
 
@@ -172,6 +208,34 @@ export class Renderer {
     ctx.fill();
   }
 
+  private drawHorizonGlow(palette: SkyPalette): void {
+    if (palette.horizonGlow <= 0) return;
+    const { ctx, width, height } = this;
+    const cy = height * palette.horizonY;
+    const radius = Math.max(width, height) * 0.55;
+    const glow = ctx.createRadialGradient(width * 0.74, cy, 0, width * 0.74, cy, radius);
+    glow.addColorStop(0, palette.sunGlow);
+    glow.addColorStop(0.5, palette.sunGlow);
+    glow.addColorStop(1, 'rgba(0,0,0,0)');
+    ctx.save();
+    ctx.globalAlpha = palette.horizonGlow;
+    ctx.fillStyle = glow;
+    ctx.fillRect(0, 0, width, height);
+    ctx.restore();
+  }
+
+  /** A soft band of murk that pools where the skyline meets the ground. */
+  private drawGroundHaze(palette: SkyPalette, horizon: number): void {
+    const { ctx, width } = this;
+    const top = horizon + 40;
+    const band = ctx.createLinearGradient(0, top - 90, 0, top + 120);
+    band.addColorStop(0, 'rgba(0,0,0,0)');
+    band.addColorStop(0.45, palette.groundHaze);
+    band.addColorStop(1, 'rgba(0,0,0,0)');
+    ctx.fillStyle = band;
+    ctx.fillRect(0, top - 90, width, 210);
+  }
+
   private drawWeather(
     color: string,
     rate: number,
@@ -207,14 +271,15 @@ export class Renderer {
     parallax: number,
     camera: { x: number; y: number; zoom: number },
     scale: number,
+    haze: string,
+    baseY: number,
+    seedOffset: number,
   ): void {
-    const { ctx, width, height } = this;
+    const { ctx, width } = this;
     const offset = camera.x * parallax * camera.zoom;
-    const baseY = height * 0.78 + (1 - parallax) * 30;
 
-    ctx.fillStyle = color;
     for (const b of this.skylineSeeds) {
-      const x = b.x - (offset % (this.skylineSeeds.length * 120));
+      const x = b.x - (offset % (this.skylineSeeds.length * 120)) + seedOffset;
       if (x < -b.w - 200 || x > width + 200) continue;
       const h = b.h * scale;
       const w = b.w * scale;
@@ -258,6 +323,21 @@ export class Renderer {
       }
       ctx.globalAlpha = 1;
       ctx.fillStyle = color;
+
+      // Atmospheric perspective, clipped to this tower's own silhouette so
+      // the sky visible between buildings keeps its colour. The wash is
+      // strongest at the base, where the city dissolves into the murk.
+      const hazeGrad = ctx.createLinearGradient(0, y, 0, baseY);
+      hazeGrad.addColorStop(0, haze);
+      hazeGrad.addColorStop(0.62, haze);
+      hazeGrad.addColorStop(1, haze);
+      ctx.save();
+      ctx.beginPath();
+      ctx.rect(x, y, w, h + 40);
+      ctx.clip();
+      ctx.fillStyle = hazeGrad;
+      ctx.fillRect(x, y, w, h + 40);
+      ctx.restore();
     }
 
     // Antennas on some rooftops.
@@ -265,7 +345,7 @@ export class Renderer {
     ctx.lineWidth = 2;
     for (let i = 0; i < this.skylineSeeds.length; i += 9) {
       const b = this.skylineSeeds[i];
-      const x = b.x - (offset % (this.skylineSeeds.length * 120));
+      const x = b.x - (offset % (this.skylineSeeds.length * 120)) + seedOffset;
       if (x < -50 || x > width + 50) continue;
       const h = b.h * scale;
       ctx.beginPath();
@@ -295,8 +375,13 @@ export class Renderer {
       if (slab.x + slab.w < left - 60 || slab.x > right + 60) continue;
       const c = slabCorners(slab);
 
-      // Body.
-      ctx.fillStyle = MATERIAL_FILL[slab.material];
+      // Body, shaded with a vertical gradient so the facade falls into shadow
+      // below the lip instead of reading as one flat colour block.
+      const bodyGrad = ctx.createLinearGradient(0, c.tl.y, 0, c.bl.y);
+      bodyGrad.addColorStop(0, MATERIAL_FILL[slab.material]);
+      bodyGrad.addColorStop(0.34, MATERIAL_FILL[slab.material]);
+      bodyGrad.addColorStop(1, MATERIAL_DEEP[slab.material]);
+      ctx.fillStyle = bodyGrad;
       ctx.beginPath();
       ctx.moveTo(c.tl.x, c.tl.y);
       ctx.lineTo(c.tr.x, c.tr.y);
@@ -304,6 +389,11 @@ export class Renderer {
       ctx.lineTo(c.bl.x, c.bl.y);
       ctx.closePath();
       ctx.fill();
+
+      // Material-specific surface texture: concrete gets panel seams and
+      // speckle, metal gets corrugation, glass gets mullions and a sheen,
+      // wood gets plank grain.
+      this.drawSlabTexture(slab, c, zoom);
 
       // Lit top edge — makes walkable surfaces unmistakable.
       ctx.strokeStyle = MATERIAL_EDGE[slab.material];
@@ -313,8 +403,17 @@ export class Renderer {
       ctx.lineTo(c.tr.x, c.tr.y);
       ctx.stroke();
 
-      // Subtle surface texture.
-      ctx.strokeStyle = 'rgba(255,255,255,0.035)';
+      // Cool rim highlight along the lip catches the horizon light. This is
+      // what keeps a dark foreground roof readable against a pale sky.
+      ctx.strokeStyle = 'rgba(215,232,255,0.3)';
+      ctx.lineWidth = 1.6 / zoom;
+      ctx.beginPath();
+      ctx.moveTo(c.tl.x, c.tl.y);
+      ctx.lineTo(c.tr.x, c.tr.y);
+      ctx.stroke();
+
+      // Panel seams across the face of the building.
+      ctx.strokeStyle = 'rgba(0,0,0,0.22)';
       ctx.lineWidth = 1 / zoom;
       ctx.beginPath();
       for (let i = 1; i < 4; i++) {
@@ -446,6 +545,129 @@ export class Renderer {
     ctx.restore();
   }
 
+  /**
+   * Draws material-specific surface detail on a rooftop slab. Each material
+   * gets its own treatment so a concrete roof never reads like a glass one,
+   * and the repeating detail gives the player a sense of scale while running.
+   */
+  private drawSlabTexture(
+    slab: { x: number; y: number; w: number; h: number; material: string },
+    c: { tl: Vec2; tr: Vec2; br: Vec2; bl: Vec2 },
+    zoom: number,
+  ): void {
+    const { ctx } = this;
+    const span = c.tr.x - c.tl.x;
+    if (span <= 4) return;
+
+    ctx.save();
+    ctx.beginPath();
+    ctx.moveTo(c.tl.x, c.tl.y);
+    ctx.lineTo(c.tr.x, c.tr.y);
+    ctx.lineTo(c.br.x, c.br.y);
+    ctx.lineTo(c.bl.x, c.bl.y);
+    ctx.closePath();
+    ctx.clip();
+
+    switch (slab.material) {
+      case 'metal': {
+        // Corrugated ribs running down the face.
+        ctx.strokeStyle = 'rgba(255,255,255,0.1)';
+        ctx.lineWidth = 1 / zoom;
+        ctx.beginPath();
+        const ribs = Math.max(2, Math.floor(span / 9));
+        for (let i = 1; i < ribs; i++) {
+          const t = i / ribs;
+          const x = lerp(c.tl.x, c.tr.x, t);
+          const y = lerp(c.tl.y, c.tr.y, t);
+          ctx.moveTo(x, y);
+          ctx.lineTo(x, y + 34);
+        }
+        ctx.stroke();
+        // Bolted seam plates.
+        ctx.fillStyle = 'rgba(150,168,196,0.26)';
+        const plates = Math.max(1, Math.floor(span / 46));
+        for (let i = 0; i < plates; i++) {
+          const t = (i + 0.5) / plates;
+          const x = lerp(c.tl.x, c.tr.x, t);
+          const y = lerp(c.tl.y, c.tr.y, t);
+          ctx.fillRect(x - 3, y + 6, 6, 4);
+        }
+        break;
+      }
+      case 'glass': {
+        // Vertical mullions plus a diagonal sheen across the glazing.
+        ctx.strokeStyle = 'rgba(160,205,240,0.17)';
+        ctx.lineWidth = 1 / zoom;
+        ctx.beginPath();
+        const cols = Math.max(2, Math.floor(span / 14));
+        for (let i = 1; i < cols; i++) {
+          const t = i / cols;
+          const x = lerp(c.tl.x, c.tr.x, t);
+          const y = lerp(c.tl.y, c.tr.y, t);
+          ctx.moveTo(x, y);
+          ctx.lineTo(x, y + 30);
+        }
+        ctx.stroke();
+        const sheen = ctx.createLinearGradient(c.tl.x, c.tl.y, c.tl.x + span * 0.7, c.tl.y + 40);
+        sheen.addColorStop(0, 'rgba(190,230,255,0)');
+        sheen.addColorStop(0.5, 'rgba(190,230,255,0.15)');
+        sheen.addColorStop(1, 'rgba(190,230,255,0)');
+        ctx.fillStyle = sheen;
+        ctx.fillRect(c.tl.x, c.tl.y, span, 40);
+        break;
+      }
+      case 'wood': {
+        // Plank grain along the face.
+        ctx.strokeStyle = 'rgba(255,214,160,0.11)';
+        ctx.lineWidth = 1 / zoom;
+        ctx.beginPath();
+        for (let i = 1; i < 5; i++) {
+          const t = i / 5;
+          const x = lerp(c.tl.x, c.tr.x, t);
+          const y = lerp(c.tl.y, c.tr.y, t);
+          ctx.moveTo(x, y);
+          ctx.lineTo(x, y + 24);
+        }
+        ctx.stroke();
+        break;
+      }
+      default: {
+        // Concrete: speckled aggregate plus expansion joints and a weather
+        // line, so a long roof reads as poured panels rather than a slab.
+        const specks = Math.floor(span / 5);
+        ctx.fillStyle = 'rgba(255,255,255,0.13)';
+        for (let i = 0; i < specks; i++) {
+          const seed = (slab.x * 0.031 + i * 7.13) % 1;
+          const t = seed;
+          const x = lerp(c.tl.x, c.tr.x, t);
+          const y = lerp(c.tl.y, c.tr.y, t) + 3 + ((seed * 997) % 24);
+          ctx.fillRect(x, y, 2, 2);
+        }
+        // Expansion joints running down the face.
+        ctx.strokeStyle = 'rgba(0,0,0,0.3)';
+        ctx.lineWidth = 1.4 / zoom;
+        ctx.beginPath();
+        for (let i = 1; i < 4; i++) {
+          const t = i / 4;
+          const x = lerp(c.tl.x, c.tr.x, t);
+          const y = lerp(c.tl.y, c.tr.y, t);
+          ctx.moveTo(x, y);
+          ctx.lineTo(x, y + 22);
+        }
+        ctx.stroke();
+        // Weather streak below the lip catches the light.
+        ctx.strokeStyle = 'rgba(255,255,255,0.07)';
+        ctx.lineWidth = 3 / zoom;
+        ctx.beginPath();
+        ctx.moveTo(c.tl.x, c.tl.y + 6);
+        ctx.lineTo(c.tr.x, c.tr.y + 6);
+        ctx.stroke();
+        break;
+      }
+    }
+    ctx.restore();
+  }
+
   // ----------------------------------------------------------------------
   // Runner
   // ----------------------------------------------------------------------
@@ -502,17 +724,60 @@ export class Renderer {
 
     this.drawSkeletonBody(player, tierColor.primary, false);
 
-    // --- Face hint ---------------------------------------------------------
-    ctx.fillStyle = RUNNER_COLORS.head;
+    // --- Head --------------------------------------------------------------
+    const headR = 13;
+    // Shaded skull: a radial gradient gives the head volume instead of
+    // reading as a flat disc.
+    const skull = ctx.createRadialGradient(
+      rig.head.x - face * 4,
+      rig.head.y - 4,
+      1,
+      rig.head.x,
+      rig.head.y,
+      headR * 1.5,
+    );
+    skull.addColorStop(0, RUNNER_COLORS.head);
+    skull.addColorStop(1, 'rgba(8,12,22,0.92)');
+    ctx.fillStyle = skull;
     ctx.beginPath();
-    ctx.arc(rig.head.x, rig.head.y, 13, 0, Math.PI * 2);
+    ctx.arc(rig.head.x, rig.head.y, headR, 0, Math.PI * 2);
     ctx.fill();
 
-    // Visor / eye glint.
+    // Hair / cap mass over the crown and trailing side of the head.
+    ctx.fillStyle = 'rgba(14,18,28,0.95)';
+    ctx.beginPath();
+    ctx.arc(rig.head.x - face * 3.5, rig.head.y - 4.5, headR * 0.92, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Face plane catches the key light on the leading side.
+    ctx.fillStyle = RUNNER_COLORS.head;
+    ctx.beginPath();
+    ctx.arc(rig.head.x + face * 2.5, rig.head.y + 1, headR * 0.66, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Visor band across the eyes.
+    ctx.strokeStyle = tierColor.primary;
+    ctx.lineWidth = 3;
+    ctx.lineCap = 'round';
+    ctx.beginPath();
+    ctx.moveTo(rig.head.x + face * 1, rig.head.y - 1);
+    ctx.lineTo(rig.head.x + face * 9, rig.head.y - 2.5);
+    ctx.stroke();
+
+    // Eye glint.
     ctx.fillStyle = tierColor.primary;
     ctx.beginPath();
     ctx.arc(rig.head.x + face * 6, rig.head.y - 1, 2.6, 0, Math.PI * 2);
     ctx.fill();
+
+    // Rim light along the leading edge of the head.
+    ctx.strokeStyle = tierColor.primary;
+    ctx.globalAlpha = tier === 3 ? 0.5 : 0.7;
+    ctx.lineWidth = 1.6;
+    ctx.beginPath();
+    ctx.arc(rig.head.x, rig.head.y, headR - 0.8, -1.15, 1.15);
+    ctx.stroke();
+    ctx.globalAlpha = 1;
 
     ctx.restore();
   }
@@ -523,20 +788,49 @@ export class Renderer {
 
     ctx.globalAlpha = glowOnly ? 0.55 : 1;
 
-    const drawLimb = (
+    /**
+     * Draws a limb as a tapered capsule: thick at the root, thin at the
+     * extremity. A uniform-width stroke reads as a pipe; real limbs narrow,
+     * and the taper is what gives the runner a sense of anatomy.
+     */
+    const drawTaperedLimb = (
       root: { x: number; y: number } | null,
       joint: { x: number; y: number } | null,
       end: { x: number; y: number } | null,
       width: number,
+      taper: number,
     ) => {
       if (!root || !joint || !end) return;
-      ctx.strokeStyle = RUNNER_COLORS.body;
-      ctx.lineWidth = width;
+      const mid = (width + taper) * 0.5;
       ctx.lineCap = 'round';
+      ctx.strokeStyle = RUNNER_COLORS.body;
+
+      // Upper segment: root -> joint.
+      ctx.lineWidth = width;
       ctx.beginPath();
       ctx.moveTo(root.x, root.y);
       ctx.lineTo(joint.x, joint.y);
+      ctx.stroke();
+
+      // Lower segment: joint -> end, narrowed.
+      ctx.lineWidth = mid;
+      ctx.beginPath();
+      ctx.moveTo(joint.x, joint.y);
       ctx.lineTo(end.x, end.y);
+      ctx.stroke();
+
+      // Joint mass — shoulders, knees and elbows read as articulation points.
+      ctx.fillStyle = RUNNER_COLORS.body;
+      ctx.beginPath();
+      ctx.arc(joint.x, joint.y, mid * 0.62, 0, Math.PI * 2);
+      ctx.fill();
+
+      // Form shadow along the trailing edge, opposite the key light.
+      ctx.strokeStyle = 'rgba(4,8,16,0.4)';
+      ctx.lineWidth = Math.max(1.4, width * 0.22);
+      ctx.beginPath();
+      ctx.moveTo(root.x + player.facing * width * 0.3, root.y);
+      ctx.lineTo(joint.x + player.facing * width * 0.3, joint.y);
       ctx.stroke();
 
       // Rim light along the leading edge.
@@ -544,17 +838,17 @@ export class Renderer {
       ctx.globalAlpha = glowOnly ? 0.45 : 0.8;
       ctx.lineWidth = 1.4;
       ctx.beginPath();
-      ctx.moveTo(root.x, root.y);
-      ctx.lineTo(joint.x, joint.y);
+      ctx.moveTo(root.x + player.facing * width * 0.42, root.y);
+      ctx.lineTo(joint.x + player.facing * width * 0.42, joint.y);
       ctx.stroke();
       ctx.globalAlpha = glowOnly ? 0.55 : 1;
     };
 
-    // Legs.
+    // Legs — heavy thighs tapering into shins.
     const ll = rig.leftLeg;
     const rl = rig.rightLeg;
-    if (ll) drawLimb(ll.root, ll.joint, ll.end, 13);
-    if (rl) drawLimb(rl.root, rl.joint, rl.end, 13);
+    if (ll) drawTaperedLimb(ll.root, ll.joint, ll.end, 14, 8);
+    if (rl) drawTaperedLimb(rl.root, rl.joint, rl.end, 14, 8);
 
     // Feet.
     ctx.strokeStyle = RUNNER_COLORS.body;
@@ -582,19 +876,39 @@ export class Renderer {
     ctx.lineTo(rig.rightFoot.ankle.x + player.facing * 13, rig.rightFoot.ankle.y + 2);
     ctx.stroke();
 
-    // Torso.
+    // Torso — drawn as a tapered shape so the chest is broader than the waist.
     const pelvis = rig.pelvis;
     const neck = rig.neck;
-    ctx.strokeStyle = RUNNER_COLORS.body;
-    ctx.lineWidth = 24;
+    const dx = neck.x - pelvis.x;
+    const dy = neck.y - pelvis.y;
+    const len = Math.hypot(dx, dy) || 1;
+    const nx = -dy / len;
+    const ny = dx / len;
+    const hipHalf = 12;
+    const chestHalf = 15;
+
+    ctx.fillStyle = RUNNER_COLORS.body;
     ctx.beginPath();
-    ctx.moveTo(pelvis.x, pelvis.y);
-    ctx.lineTo(neck.x, neck.y);
+    ctx.moveTo(pelvis.x + nx * hipHalf, pelvis.y + ny * hipHalf);
+    ctx.lineTo(neck.x + nx * chestHalf, neck.y + ny * chestHalf);
+    ctx.lineTo(neck.x - nx * chestHalf, neck.y - ny * chestHalf);
+    ctx.lineTo(pelvis.x - nx * hipHalf, pelvis.y - ny * hipHalf);
+    ctx.closePath();
+    ctx.fill();
+
+    // Form shadow down the trailing side of the torso.
+    ctx.strokeStyle = 'rgba(4,8,16,0.42)';
+    ctx.lineWidth = 6;
+    ctx.lineCap = 'butt';
+    ctx.beginPath();
+    ctx.moveTo(pelvis.x - nx * hipHalf - player.facing * 4, pelvis.y - ny * hipHalf);
+    ctx.lineTo(neck.x - nx * chestHalf - player.facing * 4, neck.y - ny * chestHalf);
     ctx.stroke();
 
     // Fabric panel seams and a restrained cool key-light.
     ctx.strokeStyle = 'rgba(225,235,250,0.22)';
     ctx.lineWidth = 3;
+    ctx.lineCap = 'butt';
     ctx.beginPath();
     ctx.moveTo(pelvis.x - 4, pelvis.y - 4);
     ctx.lineTo(neck.x - 4, neck.y + 5);
@@ -616,11 +930,11 @@ export class Renderer {
     ctx.stroke();
     ctx.globalAlpha = glowOnly ? 0.55 : 1;
 
-    // Arms.
+    // Arms — narrower taper than the legs.
     const la = rig.leftArm;
     const ra = rig.rightArm;
-    if (la) drawLimb(la.root, la.joint, la.end, 9);
-    if (ra) drawLimb(ra.root, ra.joint, ra.end, 9);
+    if (la) drawTaperedLimb(la.root, la.joint, la.end, 10, 6);
+    if (ra) drawTaperedLimb(ra.root, ra.joint, ra.end, 10, 6);
 
     ctx.globalAlpha = 1;
   }
@@ -750,6 +1064,14 @@ const MATERIAL_FILL: Record<string, string> = {
   metal: '#232a38',
   glass: '#1d2a38',
   wood: '#241c18',
+};
+
+/** Deep shadow tone used at the base of each slab's face. */
+const MATERIAL_DEEP: Record<string, string> = {
+  concrete: '#0d1017',
+  metal: '#121722',
+  glass: '#0e1620',
+  wood: '#14100d',
 };
 
 const MATERIAL_EDGE: Record<string, string> = {
