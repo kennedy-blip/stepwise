@@ -37,13 +37,17 @@ describe('Deployment configuration', () => {
     }
   });
 
-  it('routes the APK download at a file that actually exists', () => {
+  it('serves the APK download from a real file', () => {
+    // The download URL points at a file in public/, so it is served straight
+    // off the filesystem. A rewrite is only allowed when it redirects to
+    // another file that actually exists.
     const rewrite = (vercel.rewrites ?? []).find((r) => r.source === APK_DOWNLOAD_URL);
-    expect(rewrite).toBeDefined();
-
-    // The destination must be present in the published public folder.
-    const destination = rewrite!.destination.replace(/^\//, '');
-    expect(existsSync(`public/${destination}`)).toBe(true);
+    if (rewrite) {
+      const destination = rewrite.destination.replace(/^\//, '');
+      expect(existsSync(`public/${destination}`)).toBe(true);
+    } else {
+      expect(existsSync(`public${APK_DOWNLOAD_URL}`)).toBe(true);
+    }
   });
 
   it('only labels a real APK with the Android package content type', () => {

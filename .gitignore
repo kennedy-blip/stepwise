@@ -22,3 +22,15 @@ ui-*.png/
 pause.png
 settings.png
 summary.png
+
+# ── Android APK build ───────────────────────────────────────────────────────
+# Intermediate build output (web bundle copy, dex, compiled resources).
+android/build/
+
+# Toolchain binaries used by scripts/build-apk.mjs. They are large and are
+# fetched by tools/fetch-android-tools.sh rather than committed.
+tools/android/aapt2
+tools/android/smali.jar
+
+# The generated APK itself IS committed: it is the artefact the download
+# button serves, so it has to ship with the deployed site.

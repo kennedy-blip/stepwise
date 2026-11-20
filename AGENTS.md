@@ -206,19 +206,49 @@ binds behaviour to it and `src/main.ts` owns the state transitions.
 | `npm run typecheck`  | `tsc --noEmit`                               |
 | `npm run lint`       | ESLint over the project                      |
 | `npm run format`     | Prettier write                               |
+| `npm run build:apk`  | Build and sign `public/downloads/stepwise.apk` |
+| `npm run verify:apk` | Validate the shipped APK artefact            |
 
 ---
 
-## 11. Deploying
+## 11. The Android APK
+
+The APK is a **real, signed, installable package** that wraps the same web
+build the browser gets. It lives in `android/`, is built by
+`scripts/build-apk.mjs` and checked by `scripts/verify-apk.mjs`.
+
+**Rules for anyone touching it:**
+
+- **The Activity is smali, not Java.** `android/smali/com/stepwise/game/`
+  holds the WebView Activity and the `StepwiseNative` bridge. There is no
+  Java compiler in the toolchain, only a JRE — keep it that way unless you
+  also add a compiler.
+- **Asset paths must be relative.** The page loads from
+  `file:///android_asset/www/index.html`, so `/assets/...` resolves outside
+  the app and 404s. The APK build sets `VITE_BASE=./`; the web deploy keeps
+  `/`. `tests/apk.test.ts` fails if an absolute path sneaks back in.
+- **The bridge is optional.** `src/core/platform.ts` must keep working when
+  `window.StepwiseNative` is absent, partially injected, or throws. The
+  browser build has no bridge and must be unaffected.
+- **Rebuild the APK after any web change.** `npm run build:apk` re-bundles
+  the site into the package. A stale APK ships an old game.
+- **Do not hand-edit `public/downloads/stepwise.apk`.** It is generated; run
+  the build script and let `npm run verify:apk` validate the result.
+- `tools/fetch-android-tools.sh` installs `aapt2`, `smali.jar` and the
+  signing keystore into `tools/android/`. Those binaries are gitignored;
+  the keystore and the built APK are committed.
+
+---
+
+## 12. Deploying
 
 - `vercel.json` holds the build command, the output directory and the caching
   headers. The `/downloads/` route serves the Android APK.
 - The APK path is a single constant: `APK_DOWNLOAD_URL` in
   `src/game/config.ts`. Point it somewhere else rather than hard-coding a new
   URL in the UI.
-- `public/downloads/README.txt` explains exactly how to produce and drop a
-  signed `.apk` in. The download button must never 404 — if the binary is
-  missing, ship the README notice in its place.
+- The download button must never 404 — `public/downloads/stepwise.apk` is
+  committed, so the route always resolves to a file.
 - **Never write a self-referencing rewrite.** `"source": "/x.apk",
 "destination": "/x.apk"` is an infinite loop: Vercel never reaches the
   filesystem and the route fails. This shipped once and broke the download.
@@ -228,13 +258,15 @@ binds behaviour to it and `src/main.ts` owns the state transitions.
 - `tests/deploy.test.ts` asserts all of the above, plus that the security
   headers are present and that a favicon is declared. Run it after any change
   to `vercel.json`, `index.html` or the download route.
+- `tests/apk.test.ts` asserts against the shipped binary itself — valid zip,
+  required members, DEX magic, relative paths, v1 digests, v2/v3 blocks.
 - The browser requests `/favicon.ico` by default. Declare a `<link
 rel="icon">` in `index.html` and ship the file in `public/` so the
   deployment does not log a 404 on every page load.
 
 ---
 
-## 12. Debugging aids
+## 13. Debugging aids
 
 - `I` toggles the IK skeleton, raycasts and hitbox overlay in game.
 - `npx tsx tools/rig-check.ts` — validates bone lengths and foot contact

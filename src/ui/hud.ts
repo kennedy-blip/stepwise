@@ -12,6 +12,7 @@ import {
   APP_VERSION,
   SKY_MOODS,
 } from '../game/config';
+import { isNativeWrapper } from '../core/platform';
 import type { Difficulty, GameSettings, SkyMood } from '../core/types';
 import type { RunStats } from '../core/types';
 
@@ -520,6 +521,14 @@ export class UI {
         ? 'Tap Download → Open the APK to install the full-screen offline mobile edition.'
         : 'Play in the browser instead — add to your home screen for a full-screen, offline edition.';
       platformSection.appendChild(tip);
+
+      if (APK_AVAILABLE) {
+        const install = document.createElement('small');
+        install.className = 'platform-note';
+        install.textContent =
+          'Installing: allow “Install unknown apps” for your browser, then open the downloaded file.';
+        platformSection.appendChild(install);
+      }
     }
     body.appendChild(platformSection);
 
@@ -554,19 +563,9 @@ export class UI {
   }
 
   private isNativeWrapper(): boolean {
-    // The Capacitor/Bubblewrap wrapper injects a global flag; we also treat a
-    // standalone display-mode web app as native.
-    const w = window as unknown as {
-      Capacitor?: { isNativePlatform?: () => boolean };
-      __stepwiseNative?: boolean;
-    };
-    if (w.__stepwiseNative) return true;
-    try {
-      if (w.Capacitor?.isNativePlatform?.()) return true;
-    } catch {
-      /* ignore */
-    }
-    return false;
+    // The Android APK injects a `StepwiseNative` bridge; the Capacitor and
+    // Bubblewrap wrappers inject a global flag instead.
+    return isNativeWrapper();
   }
 
   // ----------------------------------------------------------------------

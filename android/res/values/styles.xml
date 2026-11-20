@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!--
+        A self-contained theme: no `android:` framework attribute references, so
+        the APK links without needing a platform framework-res table.
+    -->
+    <style name="AppTheme">
+        <item name="windowBackground">@color/windowBackground</item>
+        <item name="stepwiseFullscreen">true</item>
+        <item name="stepwiseNoTitle">true</item>
+    </style>
+</resources>

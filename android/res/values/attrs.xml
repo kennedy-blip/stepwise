@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!--
+        Custom theme attributes so the APK can be linked without a platform
+        framework-res table. The Activity reads them and applies the
+        corresponding window flags at runtime.
+    -->
+    <attr name="windowBackground" format="color" />
+    <attr name="stepwiseFullscreen" format="boolean" />
+    <attr name="stepwiseNoTitle" format="boolean" />
+    <color name="windowBackground">#05070C</color>
+</resources>
