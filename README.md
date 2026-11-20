@@ -171,9 +171,22 @@ The in-game **Download Android APK (One-Tap)** button points at
 in `src/game/config.ts`.
 
 To ship a real binary, follow [`public/downloads/README.txt`](./public/downloads/README.txt) —
-it covers both Bubblewrap (TWA) and Capacitor, including release signing. Until
-a signed build is dropped in, the download route serves a notice instead of a
-broken binary, and the game remains fully playable in the browser.
+it covers both Bubblewrap (TWA) and Capacitor, including release signing.
+
+Until a signed build is dropped in, `/downloads/stepwise.apk` is rewritten to
+`/downloads/stepwise.apk.txt`, a plain-text notice. The in-game card reads
+**"Android APK — coming soon"** rather than promising an install that would
+fail, and the game remains fully playable in the browser.
+
+Two flags in `src/game/config.ts` control this:
+
+| Constant           | Meaning                                                                                                                                   |
+| ------------------ | ----------------------------------------------------------------------------------------------------------------------------------------- |
+| `APK_DOWNLOAD_URL` | The route the button points at                                                                                                            |
+| `APK_AVAILABLE`    | `false` while no signed binary exists; set to `true` when `public/downloads/stepwise.apk` is dropped in and `stepwise.apk.txt` is removed |
+
+`tests/deploy.test.ts` asserts the two stay in sync, so the download route can
+never again point at a file that does not exist.
 
 ---
 

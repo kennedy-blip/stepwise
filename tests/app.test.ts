@@ -234,6 +234,26 @@ describe('App shell', () => {
     expect(pause.classList.contains('is-visible')).toBe(false);
   });
 
+  it('opens the pause menu when the on-screen pause button is clicked', async () => {
+    await import('../src/main');
+    win.document.dispatchEvent(new win.Event('DOMContentLoaded'));
+    await Promise.resolve();
+    (win.document.getElementById('play-button') as unknown as HTMLButtonElement).click();
+
+    const pause = win.document.getElementById('pause-screen')!;
+    expect(pause.classList.contains('is-visible')).toBe(false);
+
+    // A single click must open the menu. The button used to be bound twice
+    // (once by the UI layer and once by the app shell), so one click paused
+    // and then immediately resumed, and the menu never appeared.
+    (win.document.getElementById('hud-pause') as unknown as HTMLButtonElement).click();
+    expect(pause.classList.contains('is-visible')).toBe(true);
+
+    // Clicking again resumes.
+    (win.document.getElementById('hud-pause') as unknown as HTMLButtonElement).click();
+    expect(pause.classList.contains('is-visible')).toBe(false);
+  });
+
   it('navigates from the pause menu: settings, then home', async () => {
     await import('../src/main');
     win.document.dispatchEvent(new win.Event('DOMContentLoaded'));

@@ -407,17 +407,37 @@ export class Player {
     this.checkHazards(dt);
 
     // Release conditions.
+    //
+    // The slide timer must NOT be reset when a release is blocked by a lack
+    // of headroom. Resetting it destroys the elapsed time, so `wantStand`
+    // and `tooLong` can never be satisfied and the runner stays crouched
+    // forever, unable to move.
     const wantStand = !input.crouchHeld && this.slideTimer > 0.18;
     const tooSlow = Math.abs(this.vx) < 70;
     const tooLong = this.slideTimer > PHYSICS.maxSlideTime;
     if (wantStand || tooSlow || tooLong) {
-      // Only stand if there is headroom.
       if (this.hasHeadroom()) {
         this.state = 'run';
         this.slideTimer = 0;
       } else {
-        this.slideTimer = 0; // keep sliding until there is room
+        // No headroom: the runner is still under a pipe. Keep crawling
+        // forward so it slides out from under the obstruction instead of
+        // stalling on the spot.
+        this.vx = approach(this.vx, 120 * this.facing, PHYSICS.slideFriction * dt * 2);
+        if (tooLong) {
+          // Last resort: the slide has run its full length. Stand up even
+          // if it means clipping the pipe, rather than locking the runner in
+          // the crouch forever.
+          this.state = 'air';
+          this.slideTimer = 0;
+          this.fallStartY = this.y;
+          this.hasFallApex = true;
+          this.airTime = 0;
+          this.vx = Math.max(Math.abs(this.vx), 180) * this.facing;
+        }
       }
+      // Otherwise keep sliding: the timer keeps running so the slide can
+      // still time out once the runner is out from under the pipe.
     }
 
     this.applyGravityAndMove(dt);

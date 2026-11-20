@@ -1,0 +1,46 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="Stepwise">
+  <defs>
+    <linearGradient id="sky" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#1b1b3a" />
+      <stop offset="0.55" stop-color="#7b3f6b" />
+      <stop offset="1" stop-color="#f0a05a" />
+    </linearGradient>
+  </defs>
+
+  <rect width="64" height="64" rx="14" fill="url(#sky)" />
+
+  <!-- City skyline -->
+  <g fill="#16121f">
+    <rect x="4" y="38" width="10" height="22" />
+    <rect x="18" y="30" width="9" height="30" />
+    <rect x="31" y="42" width="11" height="18" />
+    <rect x="46" y="34" width="14" height="26" />
+  </g>
+  <g fill="#ffd28c" opacity="0.75">
+    <rect x="7" y="42" width="2" height="2" />
+    <rect x="11" y="48" width="2" height="2" />
+    <rect x="20" y="35" width="2" height="2" />
+    <rect x="24" y="41" width="2" height="2" />
+    <rect x="34" y="47" width="2" height="2" />
+    <rect x="38" y="52" width="2" height="2" />
+    <rect x="49" y="39" width="2" height="2" />
+    <rect x="55" y="45" width="2" height="2" />
+  </g>
+
+  <!-- Rooftop -->
+  <rect x="0" y="52" width="64" height="4" fill="#ffb45c" />
+
+  <!-- Runner: articulated stick figure mid-stride -->
+  <g stroke="#5fe0ff" stroke-width="3.2" stroke-linecap="round" fill="none">
+    <path d="M30 22 L24 33" />
+    <path d="M24 33 L17 44" />
+    <path d="M24 33 L32 42" />
+    <path d="M30 22 L38 30" />
+    <path d="M38 30 L45 26" />
+  </g>
+  <circle cx="30" cy="19" r="4" fill="#5fe0ff" />
+  <g fill="#ffb45c">
+    <circle cx="24" cy="33" r="2.4" />
+    <circle cx="38" cy="30" r="2.4" />
+  </g>
+</svg>

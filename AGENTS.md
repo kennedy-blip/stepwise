@@ -216,6 +216,18 @@ binds behaviour to it and `src/main.ts` owns the state transitions.
 - `public/downloads/README.txt` explains exactly how to produce and drop a
   signed `.apk` in. The download button must never 404 — if the binary is
   missing, ship the README notice in its place.
+- **Never write a self-referencing rewrite.** `"source": "/x.apk",
+"destination": "/x.apk"` is an infinite loop: Vercel never reaches the
+  filesystem and the route fails. This shipped once and broke the download.
+- `APK_AVAILABLE` in `src/game/config.ts` tells the UI whether a signed binary
+  exists. Keep it in sync with `public/downloads/`, or the button will
+  promise an install that fails.
+- `tests/deploy.test.ts` asserts all of the above, plus that the security
+  headers are present and that a favicon is declared. Run it after any change
+  to `vercel.json`, `index.html` or the download route.
+- The browser requests `/favicon.ico` by default. Declare a `<link
+rel="icon">` in `index.html` and ship the file in `public/` so the
+  deployment does not log a 404 on every page load.
 
 ---
 

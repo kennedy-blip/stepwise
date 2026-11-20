@@ -13,6 +13,18 @@ import type { Difficulty, SkyMood } from '../core/types';
  */
 export const APK_DOWNLOAD_URL = '/downloads/stepwise.apk';
 
+/**
+ * Whether a real signed APK is present in `public/downloads/`.
+ *
+ * The deployment currently ships only `stepwise.apk.txt`, a plain-text
+ * placeholder. Tapping download hands the browser a text file, and Android
+ * then refuses to install it with "download failed". Rather than let the
+ * player hit that error, the UI labels the button honestly while this is
+ * false. Flip it to `true` when `public/downloads/stepwise.apk` exists and
+ * the placeholder has been removed.
+ */
+export const APK_AVAILABLE = false;
+
 /** Version string shown on the APK download card. */
 export const APP_VERSION = '1.0.0';
 

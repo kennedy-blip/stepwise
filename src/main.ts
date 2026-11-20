@@ -187,8 +187,10 @@ class App {
     });
 
     // --- HUD buttons (static ones in index.html) ---
-    document.getElementById('hud-restart')?.addEventListener('click', () => this.restartRun());
-    document.getElementById('hud-pause')?.addEventListener('click', () => this.togglePause());
+    // The restart and pause buttons are already wired by the UI layer, which
+    // dispatches `stepwise:restart` / `stepwise:pause`. Binding them again
+    // here would toggle the pause twice per click, so the game would appear
+    // to ignore the button.
     document.getElementById('resume-button')?.addEventListener('click', () => this.togglePause());
 
     // --- Escape closes the settings modal ---

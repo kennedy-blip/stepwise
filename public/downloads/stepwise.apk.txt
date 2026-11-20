@@ -1,11 +1,52 @@
-PLACEHOLDER — the signed Android APK is not in this build yet.
+Stepwise — Android APK
+
+The signed Android APK is not in this build yet.
+
+This file is the placeholder served at /downloads/stepwise.apk so the
+in-game "Download Android APK (One-Tap)" button has a valid target. The
+browser downloads this notice instead of an installable binary, which is
+why an Android device reports "download failed" when it tries to open the
+file as an APK — the file is text, not a signed package.
+
+The game itself is fully playable in the browser right now:
+  - Desktop web  — keyboard controls
+  - Mobile web   — multitouch controls
+  - Installed as a PWA — add to home screen for a full-screen, offline
+    edition with no install step
+
+HOW TO SHIP A REAL APK
+----------------------
+
+1. Build the web bundle:
+     npm run build
+   This emits the static site into ./dist
+
+2. Wrap it for Android. Two supported routes:
+
+   a) Bubblewrap (Trusted Web Activity) — simplest:
+     npm install -g @bubblewrap/cli
+     bubblewrap init --manifest https://your-domain.com/.well-known/assetlinks.json
+     bubblewrap build
+     The resulting .aab / .apk is signed with a local debug key by default.
+
+   b) Capacitor — full native shell with haptic plugins:
+     npm install @capacitor/core @capacitor/cli @capacitor/android
+     npx cap init "Stepwise" "ai.arena.stepwise" --web-dir=dist
+     npx cap add android
+     npx cap sync android
+     npx cap open android
+     Then build a release APK in Android Studio. For release signing,
+     configure a keystore and run:
+       cd android && ./gradlew assembleRelease
+
+3. Copy the resulting binary here, named exactly:
+     public/downloads/stepwise.apk
+   The placeholder file public/downloads/stepwise.apk.txt must be removed
+   at the same time, otherwise the rewrite in vercel.json would keep
+   serving this notice in preference to the real binary.
+
+4. Rebuild and redeploy:
+     npm run build
+     vercel --prod
 
 See README.txt in this folder for the full packaging instructions.
-
-The "Download Android APK (One-Tap)" button in Settings points at
-/downloads/stepwise.apk. Drop the real, signed binary at:
-
-    public/downloads/stepwise.apk
-
-then run `npm run build` and redeploy to Vercel. Until then the game is
-fully playable in the browser (desktop, mobile web and installed as a PWA).

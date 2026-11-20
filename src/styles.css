@@ -870,6 +870,30 @@ kbd {
   box-shadow: 0 10px 30px rgba(95, 224, 255, 0.22);
 }
 
+/* No signed APK is published yet: the card is muted so it does not read as
+   a live download that is about to fail. */
+.apk-card-pending {
+  border-color: rgba(255, 255, 255, 0.12);
+  background: linear-gradient(135deg, rgba(255, 255, 255, 0.06), rgba(255, 255, 255, 0.02));
+  cursor: default;
+}
+
+.apk-card-pending:hover {
+  transform: none;
+  border-color: rgba(255, 255, 255, 0.12);
+  box-shadow: none;
+}
+
+.apk-card-pending .apk-icon {
+  color: var(--text-dim);
+}
+
+.apk-card-pending .apk-badge {
+  color: var(--text-dim);
+  border-color: rgba(255, 255, 255, 0.16);
+  background: rgba(255, 255, 255, 0.06);
+}
+
 .apk-icon {
   width: 42px;
   height: 42px;

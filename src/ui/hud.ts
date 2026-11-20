@@ -5,7 +5,13 @@
  * safe-area insets and is fully accessible via keyboard.
  */
 
-import { DIFFICULTY_TUNING, APK_DOWNLOAD_URL, APP_VERSION, SKY_MOODS } from '../game/config';
+import {
+  DIFFICULTY_TUNING,
+  APK_AVAILABLE,
+  APK_DOWNLOAD_URL,
+  APP_VERSION,
+  SKY_MOODS,
+} from '../game/config';
 import type { Difficulty, GameSettings, SkyMood } from '../core/types';
 import type { RunStats } from '../core/types';
 
@@ -446,19 +452,34 @@ export class UI {
       card.className = 'apk-card';
       card.href = APK_DOWNLOAD_URL;
       card.download = 'stepwise.apk';
-      card.innerHTML = `
+      if (!APK_AVAILABLE) {
+        // No signed binary is published yet. Linking to it anyway would
+        // hand the player a text file that Android refuses to install, so
+        // the card says so up front instead of failing at the download.
+        card.classList.add('apk-card-pending');
+        card.innerHTML = `
+        <div class="apk-icon" aria-hidden="true">&#9001;</div>
+        <div class="apk-text">
+          <strong>Android APK &mdash; coming soon</strong>
+          <span class="apk-sub">v${APP_VERSION} &middot; the signed binary is not published yet</span>
+        </div>
+        <span class="apk-badge">SOON</span>`;
+      } else {
+        card.innerHTML = `
         <div class="apk-icon" aria-hidden="true">&#9001;</div>
         <div class="apk-text">
           <strong>Download Android APK</strong>
           <span class="apk-sub">One-Tap Install &middot; v${APP_VERSION} &middot; Full-screen offline edition</span>
         </div>
         <span class="apk-badge">APK</span>`;
+      }
       platformSection.appendChild(card);
 
       const tip = document.createElement('small');
       tip.className = 'platform-note';
-      tip.textContent =
-        'Tap Download → Open the APK to install the full-screen offline mobile edition.';
+      tip.textContent = APK_AVAILABLE
+        ? 'Tap Download → Open the APK to install the full-screen offline mobile edition.'
+        : 'Play in the browser instead — add to your home screen for a full-screen, offline edition.';
       platformSection.appendChild(tip);
     }
     body.appendChild(platformSection);

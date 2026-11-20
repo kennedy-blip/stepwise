@@ -326,6 +326,63 @@ describe('Parkour mechanics', () => {
     expect(world.flow.armed).toBe(true);
   });
 
+  it('never locks the runner in the slide state', () => {
+    // Regression: when the runner could not stand up (no headroom under an
+    // overhead pipe) the slide timer was reset on every blocked release, so
+    // the "stand up" and "slide timed out" conditions could never be met.
+    // The runner stayed crouched, motionless, for the rest of the run.
+    const world = new World({ difficulty: 'medium', seed: 20240517 });
+    world.start();
+
+    const pipe = world.terrain.hazards.find((h) => h.kind === 'pipe');
+    expect(pipe).toBeDefined();
+
+    // Put the runner under the pipe, already sliding.
+    const player = world.player;
+    const groundY = world.terrain.groundAt(pipe!.x + 20, 0) ?? 0;
+    player.x = pipe!.x + 20;
+    player.y = groundY;
+    player.vx = 200;
+    player.grounded = true;
+    player.state = 'slide';
+    player.slideTimer = 0;
+
+    const startX = player.x;
+    for (let i = 0; i < 180; i++) {
+      step(world, { moveX: 1 });
+    }
+
+    // The runner must have moved on and left the slide.
+    expect(player.state).not.toBe('slide');
+    expect(player.x).toBeGreaterThan(startX + 40);
+  });
+
+  it('keeps the slide timer running while the runner is under a pipe', () => {
+    // The timer must accumulate so the slide can eventually time out.
+    const world = new World({ difficulty: 'medium', seed: 20240517 });
+    world.start();
+
+    const pipe = world.terrain.hazards.find((h) => h.kind === 'pipe');
+    const player = world.player;
+    const groundY = world.terrain.groundAt(pipe!.x + 20, 0) ?? 0;
+    player.x = pipe!.x + 20;
+    player.y = groundY;
+    player.vx = 120;
+    player.grounded = true;
+    player.state = 'slide';
+    player.slideTimer = 0;
+
+    let maxTimer = 0;
+    for (let i = 0; i < 60; i++) {
+      step(world, { moveX: 1 });
+      maxTimer = Math.max(maxTimer, player.slideTimer);
+    }
+
+    // The timer used to be reset to 0 on every blocked release, capping it
+    // below the 0.18s stand-up threshold and below maxSlideTime.
+    expect(maxTimer).toBeGreaterThan(0.3);
+  });
+
   it('grants a speed bonus at higher flow tiers', () => {
     const world = new World({ difficulty: 'medium', seed: 3 });
     world.start();
