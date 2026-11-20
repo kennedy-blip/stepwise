@@ -82,7 +82,7 @@ const KEYSTORE = resolveTool(
 const KEYSTORE_PASSWORD = process.env.KEYSTORE_PASSWORD ?? 'stepwisedbg';
 const KEY_ALIAS = process.env.KEY_ALIAS ?? 'stepwise';
 const API_LEVEL = process.env.API_LEVEL ?? '34';
-const MIN_SDK = process.env.MIN_SDK ?? '21';
+const MIN_SDK = process.env.MIN_SDK ?? '19';
 
 function run(command, args, options = {}) {
   return execFileSync(command, args, {

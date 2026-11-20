@@ -13,7 +13,7 @@
  * Usage: node scripts/verify-apk.mjs [path/to/apk]
  */
 
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createHash } from 'node:crypto';
@@ -58,6 +58,7 @@ const entries = new Map();
 let cursor = directoryOffset;
 for (let i = 0; i < entryCount; i += 1) {
   if (view.getUint32(cursor, true) !== 0x02014b50) break;
+  const flags = view.getUint16(cursor + 8, true);
   const method = view.getUint16(cursor + 10, true);
   const crc = view.getUint32(cursor + 16, true);
   const compressedSize = view.getUint32(cursor + 20, true);
@@ -67,7 +68,7 @@ for (let i = 0; i < entryCount; i += 1) {
   const commentLength = view.getUint16(cursor + 32, true);
   const localOffset = view.getUint32(cursor + 42, true);
   const name = new TextDecoder().decode(apk.subarray(cursor + 46, cursor + 46 + nameLength));
-  entries.set(name, { method, crc, compressedSize, uncompressedSize, localOffset });
+  entries.set(name, { flags, method, crc, compressedSize, uncompressedSize, localOffset });
   cursor += 46 + nameLength + extraLength + commentLength;
 }
 
@@ -96,6 +97,78 @@ for (const required of [
   'META-INF/CERT.RSA',
 ]) {
   check(entries.has(required), `contains ${required}`);
+}
+
+// ── local headers must agree with the central directory ─────────────────────
+// Android's zip parser rejects a package whose two headers disagree — most
+// often on the general-purpose flag, where bit 3 marks a trailing data
+// descriptor. A mismatch made the installer refuse the APK with "not
+// compatible with your phone" before it could even read the manifest.
+console.log('\nZip structure');
+{
+  let headersOk = true;
+  let descriptors = 0;
+  for (const [, entry] of entries) {
+    const localFlags = view.getUint16(entry.localOffset + 6, true);
+    const localMethod = view.getUint16(entry.localOffset + 8, true);
+    const localCrc = view.getUint32(entry.localOffset + 14, true);
+    const localCompressed = view.getUint32(entry.localOffset + 18, true);
+    const localUncompressed = view.getUint32(entry.localOffset + 22, true);
+
+    if (localFlags !== entry.flags) {
+      headersOk = false;
+      console.log(`      flag mismatch: ${entry.name}`);
+    }
+    if (localMethod !== entry.method) {
+      headersOk = false;
+      console.log(`      method mismatch: ${entry.name}`);
+    }
+    if (localCrc !== entry.crc) {
+      headersOk = false;
+      console.log(`      crc mismatch: ${entry.name}`);
+    }
+    if (localCompressed !== entry.compressedSize || localUncompressed !== entry.uncompressedSize) {
+      headersOk = false;
+      console.log(`      size mismatch: ${entry.name}`);
+    }
+    if (localFlags & 0x0008) descriptors += 1;
+  }
+  check(headersOk, 'every local header agrees with the central directory');
+  check(descriptors === 0, 'no entry uses a trailing data descriptor');
+}
+
+// ── aapt2 must be able to read the manifest ─────────────────────────────────
+// aapt2's zip and binary-XML readers are the closest available stand-in for
+// Android's own installer. If it cannot dump the manifest, the device will
+// refuse the package.
+console.log('\nManifest (parsed by aapt2)');
+{
+  const aapt2 = process.env.AAPT2;
+  if (!aapt2 || !existsSync(aapt2)) {
+    console.log('  – skipped (set AAPT2 to the aapt2 binary to enable)');
+  } else {
+    try {
+      const { execFileSync } = await import('node:child_process');
+      const out = execFileSync(
+        aapt2,
+        ['dump', 'xmltree', apkPath, '--file', 'AndroidManifest.xml'],
+        { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] },
+      );
+      check(out.includes('com.stepwise.game'), 'manifest declares the package');
+      check(/versionCode\(0x01010012\)=\d+/.test(out), 'manifest declares a versionCode');
+      check(/versionName\(0x01010013\)/.test(out), 'manifest declares a versionName');
+      check(/minSdkVersion\(0x01010008\)=\d+/.test(out), 'manifest declares a minSdkVersion');
+      check(/targetSdkVersion\(0x0101000f\)=\d+/.test(out), 'manifest declares a targetSdkVersion');
+      check(/MainActivity/.test(out), 'manifest declares the launcher activity');
+      check(
+        /android\.intent\.category\.LAUNCHER/.test(out),
+        'manifest declares the launcher intent',
+      );
+    } catch (error) {
+      check(false, 'aapt2 could not read the manifest');
+      console.log(String(error.stderr || error.stdout || error).slice(0, 800));
+    }
+  }
 }
 
 const dex = entries.get('classes.dex');

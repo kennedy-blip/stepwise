@@ -1,11 +1,20 @@
 /**
  * Repack helper — injects `classes.dex` into an aapt2-linked APK.
  *
- * `aapt2 link` produces the resource tables and manifest but has no input
- * for pre-built dex files, so the archive is rewritten here with the dex
- * added. The rewrite preserves every existing entry byte-for-byte (including
- * the STORED entries aapt2 emits for resources.arsc) and only rebuilds the
- * zip directory, so the APK stays byte-stable across rebuilds.
+ * `aapt2 link` produces the resource tables and manifest but has no input for
+ * pre-built dex files, so the archive is rewritten here with the dex added.
+ *
+ * The rewrite **normalises** the archive rather than copying it verbatim.
+ * aapt2 writes some entries with a data descriptor (general-purpose flag bit
+ * 3) in their local header while leaving the flag clear in the central
+ * directory. Android's zip parser compares the two and rejects the package
+ * outright — the install fails with "not compatible with your phone", and the
+ * manifest cannot even be read.
+ *
+ * So every entry is rewritten with a plain, self-describing local header
+ * (CRC and sizes present in the header, no trailing data descriptor) and a
+ * matching central-directory record. The flags always agree, and the sizes
+ * are always the true ones.
  */
 
 import fs from 'node:fs';
@@ -73,7 +82,7 @@ export function readCentralDirectory(buffer) {
 }
 
 /** CRC-32 (IEEE) over a buffer. */
-function crc32(buffer) {
+export function crc32(buffer) {
   let crc = 0xffffffff;
   for (let i = 0; i < buffer.length; i += 1) {
     crc ^= buffer[i];
@@ -85,7 +94,40 @@ function crc32(buffer) {
 }
 
 /**
+ * A single archive member, normalised.
+ *
+ * `flags` is always 0: no data descriptor, so the local header carries the
+ * real CRC and sizes and the central directory agrees with it.
+ */
+function normaliseEntry(name, contents, method, time, date, externalAttributes) {
+  let payload = contents;
+  let compressionMethod = method;
+  if (compressionMethod !== 0 && compressionMethod !== 8) {
+    throw new Error(`Unsupported compression method ${compressionMethod} for ${name}.`);
+  }
+  if (compressionMethod === 8) {
+    // Re-deflate at a fixed level so the output is reproducible.
+    payload = zlib.deflateRawSync(contents, { level: 9 });
+  }
+  return {
+    name,
+    flags: 0,
+    method: compressionMethod,
+    time,
+    date,
+    crc32: crc32(contents),
+    compressedSize: payload.length,
+    uncompressedSize: contents.length,
+    externalAttributes,
+    payload,
+  };
+}
+
+/**
  * Rewrite an APK so that it also contains `classes.dex`.
+ *
+ * Every entry is decompressed and re-written with consistent headers, so the
+ * archive is valid under Android's stricter zip parser.
  *
  * @param {string} apkPath      the linked APK to rewrite
  * @param {string} dexPath      the classes.dex to inject
@@ -93,127 +135,97 @@ function crc32(buffer) {
  */
 export async function repackWithDex(apkPath, dexPath, workDir) {
   const buffer = fs.readFileSync(apkPath);
-  const { entries, eocdOffset } = readCentralDirectory(buffer);
+  const { entries } = readCentralDirectory(buffer);
 
-  const dex = fs.readFileSync(dexPath);
+  const members = [];
 
-  // Read the raw (still compressed) bytes of every existing local entry.
-  const localChunks = [];
   for (const entry of entries) {
-    const header = buffer.readUInt32LE(entry.localHeaderOffset);
-    if (header !== 0x04034b50) {
+    if (buffer.readUInt32LE(entry.localHeaderOffset) !== 0x04034b50) {
       throw new Error(`Corrupt local header for ${entry.name}.`);
     }
     const nameLength = buffer.readUInt16LE(entry.localHeaderOffset + 26);
     const extraLength = buffer.readUInt16LE(entry.localHeaderOffset + 28);
     const dataStart = entry.localHeaderOffset + 30 + nameLength + extraLength;
-    const data = buffer.subarray(dataStart, dataStart + entry.compressedSize);
+    const raw = buffer.subarray(dataStart, dataStart + entry.compressedSize);
 
-    // aapt2 emits entries with a data descriptor (general-purpose flag bit 3).
-    // The descriptor follows the compressed data and must travel with it,
-    // otherwise every following entry's offset shifts and the archive
-    // stops being readable.
-    let descriptor = Buffer.alloc(0);
-    if (entry.flags & 0x0008) {
-      const descriptorStart = dataStart + entry.compressedSize;
-      const signature = buffer.readUInt32LE(descriptorStart);
-      if (signature === 0x08074b50) {
-        // Optional signature, then crc32 + compressed + uncompressed sizes.
-        descriptor = buffer.subarray(descriptorStart, descriptorStart + 16);
-      } else {
-        descriptor = buffer.subarray(descriptorStart, descriptorStart + 12);
-      }
+    let contents;
+    if (entry.method === 0) {
+      contents = Buffer.from(raw);
+    } else if (entry.method === 8) {
+      contents = zlib.inflateRawSync(raw);
+    } else {
+      throw new Error(`Unsupported compression method ${entry.method} for ${entry.name}.`);
     }
 
-    localChunks.push({ entry, data, descriptor });
+    members.push(
+      normaliseEntry(
+        entry.name,
+        contents,
+        entry.method,
+        entry.time,
+        entry.date,
+        entry.externalAttributes,
+      ),
+    );
   }
 
-  // Build the new archive from scratch: keep every entry's original local
-  // header, data and data descriptor verbatim, then append the dex entry.
+  // The dex rides along as a deflated member, like every other text entry.
+  const dex = fs.readFileSync(dexPath);
+  members.push(normaliseEntry('classes.dex', dex, 8, 0, 0x21, 0));
+
+  // ── local entries ─────────────────────────────────────────────────────────
   const chunks = [];
-  let position = 0;
   const directory = [];
+  let position = 0;
 
-  for (const { entry, data, descriptor } of localChunks) {
-    const localHeader = Buffer.alloc(30);
-    localHeader.writeUInt32LE(0x04034b50, 0);
-    localHeader.writeUInt16LE(entry.flags, 4);
-    localHeader.writeUInt16LE(entry.method, 6);
-    localHeader.writeUInt16LE(entry.time, 8);
-    localHeader.writeUInt16LE(entry.date, 10);
-    localHeader.writeUInt32LE(entry.crc32, 14);
-    localHeader.writeUInt32LE(entry.compressedSize, 18);
-    localHeader.writeUInt32LE(entry.uncompressedSize, 22);
-    localHeader.writeUInt16LE(Buffer.byteLength(entry.name), 26);
-    localHeader.writeUInt16LE(0, 28);
-    const nameBuffer = Buffer.from(entry.name, 'utf8');
-    chunks.push(localHeader, nameBuffer, data);
-    if (descriptor.length) chunks.push(descriptor);
+  for (const member of members) {
+    const nameBuffer = Buffer.from(member.name, 'utf8');
+    const header = Buffer.alloc(30);
+    header.writeUInt32LE(0x04034b50, 0);
+    header.writeUInt16LE(0, 4); // version needed
+    header.writeUInt16LE(member.flags, 6);
+    header.writeUInt16LE(member.method, 8);
+    header.writeUInt16LE(member.time, 10);
+    header.writeUInt16LE(member.date, 12);
+    header.writeUInt32LE(member.crc32, 14);
+    header.writeUInt32LE(member.compressedSize, 18);
+    header.writeUInt32LE(member.uncompressedSize, 22);
+    header.writeUInt16LE(nameBuffer.length, 26);
+    header.writeUInt16LE(0, 28);
 
-    directory.push({
-      entry,
-      localHeaderOffset: position,
-    });
-    position += 30 + nameBuffer.length + data.length + descriptor.length;
+    chunks.push(header, nameBuffer, member.payload);
+    directory.push({ member, localHeaderOffset: position });
+    position += 30 + nameBuffer.length + member.payload.length;
   }
 
-  // classes.dex — deflate it like every other modern APK entry.
-  const deflated = zlib.deflateRawSync(dex, { level: 9 });
-  const dexEntry = {
-    name: 'classes.dex',
-    flags: 0,
-    method: 8,
-    time: 0,
-    date: 0x21, // 1980-01-01, the conventional "no timestamp" value
-    crc32: crc32(dex),
-    compressedSize: deflated.length,
-    uncompressedSize: dex.length,
-    externalAttributes: 0,
-  };
-  const dexName = Buffer.from(dexEntry.name, 'utf8');
-  const dexLocalHeader = Buffer.alloc(30);
-  dexLocalHeader.writeUInt32LE(0x04034b50, 0);
-  dexLocalHeader.writeUInt16LE(dexEntry.flags, 4);
-  dexLocalHeader.writeUInt16LE(dexEntry.method, 6);
-  dexLocalHeader.writeUInt16LE(dexEntry.time, 8);
-  dexLocalHeader.writeUInt16LE(dexEntry.date, 10);
-  dexLocalHeader.writeUInt32LE(dexEntry.crc32, 14);
-  dexLocalHeader.writeUInt32LE(dexEntry.compressedSize, 18);
-  dexLocalHeader.writeUInt32LE(dexEntry.uncompressedSize, 22);
-  dexLocalHeader.writeUInt16LE(dexName.length, 26);
-  dexLocalHeader.writeUInt16LE(0, 28);
-
-  chunks.push(dexLocalHeader, dexName, deflated);
-  directory.push({ entry: dexEntry, localHeaderOffset: position });
-  position += 30 + dexName.length + deflated.length;
-
-  // Central directory.
+  // ── central directory ─────────────────────────────────────────────────────
   const centralChunks = [];
   let centralSize = 0;
-  for (const { entry, localHeaderOffset } of directory) {
+  for (const { member, localHeaderOffset } of directory) {
+    const nameBuffer = Buffer.from(member.name, 'utf8');
     const header = Buffer.alloc(46);
     header.writeUInt32LE(0x02014b50, 0);
     header.writeUInt16LE(0x031e, 4); // version made by: UNIX, zip 3.0
     header.writeUInt16LE(20, 6); // version needed
-    header.writeUInt16LE(entry.flags, 8);
-    header.writeUInt16LE(entry.method, 10);
-    header.writeUInt16LE(entry.time, 12);
-    header.writeUInt16LE(entry.date, 14);
-    header.writeUInt32LE(entry.crc32, 16);
-    header.writeUInt32LE(entry.compressedSize, 20);
-    header.writeUInt32LE(entry.uncompressedSize, 24);
-    header.writeUInt16LE(Buffer.byteLength(entry.name), 28);
+    header.writeUInt16LE(member.flags, 8);
+    header.writeUInt16LE(member.method, 10);
+    header.writeUInt16LE(member.time, 12);
+    header.writeUInt16LE(member.date, 14);
+    header.writeUInt32LE(member.crc32, 16);
+    header.writeUInt32LE(member.compressedSize, 20);
+    header.writeUInt32LE(member.uncompressedSize, 24);
+    header.writeUInt16LE(nameBuffer.length, 28);
     header.writeUInt16LE(0, 30); // extra length
     header.writeUInt16LE(0, 32); // comment length
     header.writeUInt16LE(0, 34); // disk number
     header.writeUInt16LE(0, 36); // internal attributes
-    header.writeUInt32LE(entry.externalAttributes, 38);
+    header.writeUInt32LE(member.externalAttributes, 38);
     header.writeUInt32LE(localHeaderOffset, 42);
-    const nameBuffer = Buffer.from(entry.name, 'utf8');
     centralChunks.push(header, nameBuffer);
     centralSize += 46 + nameBuffer.length;
   }
 
+  // ── end of central directory ──────────────────────────────────────────────
   const centralOffset = position;
   const eocd = Buffer.alloc(22);
   eocd.writeUInt32LE(0x06054b50, 0);
