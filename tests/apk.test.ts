@@ -22,6 +22,8 @@ interface ZipEntry {
   compressedSize: number;
   uncompressedSize: number;
   localOffset: number;
+  /** General-purpose bit flag from the central directory record. */
+  centralFlags: number;
 }
 
 function readZip(apk: Uint8Array): Map<string, ZipEntry> {
@@ -52,6 +54,7 @@ function readZip(apk: Uint8Array): Map<string, ZipEntry> {
       compressedSize: view.getUint32(cursor + 20, true),
       uncompressedSize: view.getUint32(cursor + 24, true),
       localOffset: view.getUint32(cursor + 42, true),
+      centralFlags: view.getUint16(cursor + 8, true),
     });
     cursor += 46 + nameLength + extraLength + commentLength;
   }
@@ -84,6 +87,59 @@ describe('Android APK', () => {
       expect(entry.name).not.toBe('');
       expect(entry.compressedSize).toBeGreaterThan(0);
     }
+  });
+
+  it('has local headers that agree with the central directory', () => {
+    // Android's zip parser rejects a package whose local header and central
+    // directory record disagree — most often about the general-purpose flag
+    // (bit 3 marks a trailing data descriptor). A mismatch made the installer
+    // refuse the APK with "not compatible with your phone" before it could
+    // even read the manifest.
+    const view = new DataView(apk.buffer, apk.byteOffset, apk.byteLength);
+
+    for (const entry of entries.values()) {
+      expect(view.getUint32(entry.localOffset, true), `${entry.name} local signature`).toBe(
+        0x04034b50,
+      );
+
+      const localFlags = view.getUint16(entry.localOffset + 6, true);
+      expect(localFlags, `${entry.name} flag mismatch`).toBe(entry.centralFlags);
+
+      const localMethod = view.getUint16(entry.localOffset + 8, true);
+      expect(localMethod, `${entry.name} method mismatch`).toBe(entry.method);
+
+      const localCrc = view.getUint32(entry.localOffset + 14, true);
+      const localCompressed = view.getUint32(entry.localOffset + 18, true);
+      const localUncompressed = view.getUint32(entry.localOffset + 22, true);
+
+      expect(localCrc, `${entry.name} crc mismatch`).toBe(entry.crc);
+      expect(localCompressed, `${entry.name} compressed size mismatch`).toBe(entry.compressedSize);
+      expect(localUncompressed, `${entry.name} uncompressed size mismatch`).toBe(
+        entry.uncompressedSize,
+      );
+    }
+  });
+
+  it('has no trailing data descriptors', () => {
+    // A data descriptor means the sizes live after the entry data instead of
+    // in the header. The APK is normalised so every entry is self-describing.
+    const view = new DataView(apk.buffer, apk.byteOffset, apk.byteLength);
+    for (const entry of entries.values()) {
+      const flags = view.getUint16(entry.localOffset + 6, true);
+      expect(flags & 0x0008, `${entry.name} still uses a data descriptor`).toBe(0);
+    }
+  });
+
+  it('declares the version and sdk levels the installer reads', () => {
+    // These are plain manifest attributes, but they decide whether the
+    // package is offered to the device at all. The binary manifest keeps its
+    // strings in a UTF-16 pool, so decode it as such.
+    const bytes = entryData(apk, entries.get('AndroidManifest.xml')!);
+    const text = new TextDecoder('utf-16le').decode(bytes);
+    expect(text).toContain('com.stepwise.game');
+    expect(text).toContain('MainActivity');
+    expect(text).toContain('android.intent.category.LAUNCHER');
+    expect(bytes.byteLength).toBeGreaterThan(100);
   });
 
   it('contains every member Android needs to install it', () => {

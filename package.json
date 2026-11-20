@@ -8,7 +8,7 @@
     "dev": "vite",
     "build": "tsc --noEmit && vite build",
     "build:apk": "node scripts/build-apk.mjs",
-    "verify:apk": "node scripts/verify-apk.mjs",
+    "verify:apk": "AAPT2=tools/android/aapt2 node scripts/verify-apk.mjs",
     "preview": "vite preview",
     "test": "vitest run",
     "test:watch": "vitest",

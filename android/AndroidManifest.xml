@@ -3,6 +3,14 @@
     package="com.stepwise.game"
     android:versionCode="1"
     android:versionName="1.0.0">
+    <!--
+        Android 4.4 (API 19) is the floor: it is the first release with the
+        modern, updatable WebView this app runs on. Everything the game needs
+        — ES2020, WebGL, Web Audio — is available from there onwards.
+    -->
+    <uses-sdk
+        android:minSdkVersion="19"
+        android:targetSdkVersion="34" />
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.VIBRATE" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />

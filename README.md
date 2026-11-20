@@ -201,6 +201,10 @@ The APK is a full-screen, landscape-locked WebView Activity that loads the
 production web build from `file:///android_asset/www/index.html`. The same
 bundle is used for the web deploy, so the two editions never drift apart.
 
+It targets **Android 4.4 (API 19)** and up — the first release with the
+modern, updatable WebView the game runs on — and declares
+`targetSdkVersion 34`.
+
 Inside the wrapper the game gains:
 
 - **Native haptics** — the Activity injects a `StepwiseNative` bridge; jumps,
@@ -237,6 +241,22 @@ npm run verify:apk             # checks the artefact is a valid signed package
 The Activity itself is written in **smali** (`android/smali/com/stepwise/game/`)
 rather than Java, so no Java compiler is needed — only a runtime.
 
+#### Why the archive is rebuilt
+
+`aapt2` writes each entry with a **trailing data descriptor**, flagging the
+local header with bit 3 (`0x0008`) and leaving the real sizes and CRC at the
+end of the entry. Injecting the compiled `classes.dex` afterwards means the
+archive has to be rewritten, and a naive rewrite copies the central
+directory's flags (`0x0000`) while leaving the local headers' `0x0008` in
+place.
+
+Android's zip parser rejects that mismatch **before it reads the manifest**,
+and the installer reports the package as "not compatible with your phone".
+`scripts/apk-repack.mjs` therefore normalises every member: each entry is
+decompressed and recompressed, written with a self-describing local header
+carrying its real CRC and sizes, flagged `0`, and given a matching
+central-directory record.
+
 Because there is no platform `framework-res.apk` on the build machine, the
 linker is given a **synthetic framework** (`android/framework/res/values/attrs.xml`)
 that declares exactly the framework attributes the manifest uses. The resource
@@ -248,6 +268,14 @@ IDs are still resolved against the real device framework at runtime.
 build script's output: valid zip, required members, DEX magic, relative asset
 paths, matching v1 manifest digests, and the v2/v3 signing blocks. It also
 asserts that every asset the page references is actually packaged.
+
+It additionally pins the **zip invariants Android insists on**: every local
+header must agree with its central-directory record on flags, method, CRC and
+both sizes, and no entry may use a trailing data descriptor. `aapt2` parses
+the package with the same rules the device installer uses, so
+`npm run verify:apk` reads the manifest with it (set `AAPT2` to the binary to
+enable that check) and asserts the package name, version, SDK levels and
+launcher intent survive.
 
 Two flags in `src/game/config.ts` control the download card:
 
