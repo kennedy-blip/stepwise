@@ -18,7 +18,17 @@ function createPointerTarget() {
       listeners.set(type, entries);
     },
     getBoundingClientRect() {
-      return { left: 0, top: 0, width: 400, height: 800, right: 400, bottom: 800, x: 0, y: 0, toJSON: () => ({}) };
+      return {
+        left: 0,
+        top: 0,
+        width: 400,
+        height: 800,
+        right: 400,
+        bottom: 800,
+        x: 0,
+        y: 0,
+        toJSON: () => ({}),
+      };
     },
     setPointerCapture: vi.fn(),
   };
@@ -34,7 +44,11 @@ function createPointerTarget() {
   };
 }
 
-function pointer(pointerId: number, clientX: number, clientY: number): Omit<PointerLike, 'preventDefault'> {
+function pointer(
+  pointerId: number,
+  clientX: number,
+  clientY: number,
+): Omit<PointerLike, 'preventDefault'> {
   return { pointerId, pointerType: 'touch', clientX, clientY };
 }
 

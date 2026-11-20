@@ -94,7 +94,16 @@ export function installDom(url = 'https://stepwise.test/'): {
   };
 
   const saved: Record<string, unknown> = {};
-  const keys = ['window', 'document', 'navigator', 'HTMLElement', 'HTMLCanvasElement', 'HTMLInputElement', 'CustomEvent', 'Event'];
+  const keys = [
+    'window',
+    'document',
+    'navigator',
+    'HTMLElement',
+    'HTMLCanvasElement',
+    'HTMLInputElement',
+    'CustomEvent',
+    'Event',
+  ];
   for (const key of keys) {
     saved[key] = (globalThis as unknown as Record<string, unknown>)[key];
   }

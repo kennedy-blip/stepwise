@@ -82,21 +82,25 @@ check('camera has a valid transform', Number.isFinite(camera.camera.position.x))
 
 // The runner must sit left of centre on screen.
 camera.camera.updateMatrixWorld(true);
-const runnerNdc = new THREE.Vector3(
-  simX(world.player.x),
-  simY(world.player.y),
-  0,
-).project(camera.camera);
+const runnerNdc = new THREE.Vector3(simX(world.player.x), simY(world.player.y), 0).project(
+  camera.camera,
+);
 const screenX = (runnerNdc.x + 1) / 2;
 console.log('runner screen x:', screenX.toFixed(3));
 check('runner sits left of centre', screenX > 0.1 && screenX < 0.45);
 
 // The play plane must be exactly Z = 0.
 const slabMeshes = world3d.group.children.filter((c) => c instanceof THREE.Mesh);
-check('rooftops are on the Z = 0 plane', slabMeshes.every((m) => m.position.z === 0));
+check(
+  'rooftops are on the Z = 0 plane',
+  slabMeshes.every((m) => m.position.z === 0),
+);
 check('playable depth is symmetric', DEPTH.playableHalf === 1.3);
 check('parapet sits just inside the play plane', DEPTH.parapet < DEPTH.playableHalf);
-check('near city is behind the play plane', DEPTH.nearBack.near < 0 && DEPTH.nearBack.far < DEPTH.nearBack.near);
+check(
+  'near city is behind the play plane',
+  DEPTH.nearBack.near < 0 && DEPTH.nearBack.far < DEPTH.nearBack.near,
+);
 check('skyline is behind the near city', DEPTH.deepSkyline.near < DEPTH.nearBack.far);
 
 // Metres-per-pixel conversion must round-trip.

@@ -122,8 +122,7 @@ describe('World3D — rooftop geometry', () => {
     expect(pool.size).toBeLessThanOrEqual(8);
 
     // The pool must actually be in use.
-    const groups = (world3d as unknown as { hazardGroups: Map<unknown, THREE.Group> })
-      .hazardGroups;
+    const groups = (world3d as unknown as { hazardGroups: Map<unknown, THREE.Group> }).hazardGroups;
     expect(groups.size).toBeGreaterThan(0);
   });
 
@@ -180,7 +179,9 @@ describe('Humanoid3D — articulated runner', () => {
   it('keeps the head at the rig head position', () => {
     humanoid.update(world.player.rig, world.flow.tier);
     const head = humanoid.group.children.find(
-      (c) => c instanceof THREE.Group && c.children.some((k) => k instanceof THREE.Mesh && k.geometry.type === 'SphereGeometry'),
+      (c) =>
+        c instanceof THREE.Group &&
+        c.children.some((k) => k instanceof THREE.Mesh && k.geometry.type === 'SphereGeometry'),
     ) as THREE.Group | undefined;
     expect(head).toBeDefined();
     expect(head!.position.x).toBeCloseTo(simX(world.player.rig.head.x), 5);
@@ -212,7 +213,9 @@ describe('Humanoid3D — articulated runner', () => {
 
     humanoid.updateContactShadow(world.player.x, world.player.y - 200, ground, 0);
     expect(humanoid.contactShadow.scale.x).toBeLessThan(nearScale);
-    expect((humanoid.contactShadow.material as THREE.MeshBasicMaterial).opacity).toBeLessThan(nearOpacity);
+    expect((humanoid.contactShadow.material as THREE.MeshBasicMaterial).opacity).toBeLessThan(
+      nearOpacity,
+    );
   });
 });
 
@@ -328,9 +331,7 @@ describe('Presenter — WebGL detection and fallback', () => {
     const presenter = createPresenter(canvas, 'performance');
     const world = new World({ difficulty: 'medium', seed: 7 });
     world.start();
-    expect(() =>
-      presenter.render(world, { showDebug: false, skyMood: 'dusk' }),
-    ).not.toThrow();
+    expect(() => presenter.render(world, { showDebug: false, skyMood: 'dusk' })).not.toThrow();
   });
 
   it('keeps the game playable through the 2D fallback', async () => {
@@ -339,9 +340,7 @@ describe('Presenter — WebGL detection and fallback', () => {
     const world = new World({ difficulty: 'medium', seed: 11 });
     world.start();
     for (let i = 0; i < 60; i++) world.update(1 / 60);
-    expect(() =>
-      presenter.render(world, { showDebug: false, skyMood: 'rain' }),
-    ).not.toThrow();
+    expect(() => presenter.render(world, { showDebug: false, skyMood: 'rain' })).not.toThrow();
     expect(() => presenter.resize(1280, 720)).not.toThrow();
     expect(() => presenter.applyMood('dawn')).not.toThrow();
     expect(() => presenter.dispose()).not.toThrow();

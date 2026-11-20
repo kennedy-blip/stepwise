@@ -394,12 +394,10 @@ export class UI {
     gfxLabel.textContent = 'Quality Preset';
     const gfxWrap = document.createElement('div');
     gfxWrap.className = 'pill-row';
-    (
-      [
-        { id: 'high' as const, label: 'High' },
-        { id: 'performance' as const, label: 'Performance' },
-      ]
-    ).forEach((preset) => {
+    [
+      { id: 'high' as const, label: 'High' },
+      { id: 'performance' as const, label: 'Performance' },
+    ].forEach((preset) => {
       const btn = document.createElement('button');
       btn.className = 'mini-pill';
       btn.textContent = preset.label;
