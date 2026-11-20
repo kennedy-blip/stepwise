@@ -1,0 +1,143 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover"
+    />
+    <meta name="theme-color" content="#0b0d14" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta
+      name="description"
+      content="Stepwise — a 2D procedural IK rooftop parkour runner. Real-time inverse kinematics, procedural rooftops, no assets."
+    />
+    <title>Stepwise — 2D Procedural IK Rooftop Parkour</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700;800&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="/src/styles.css" />
+  </head>
+  <body>
+    <div id="app">
+      <canvas id="game-canvas"></canvas>
+
+      <!-- ===================== HUD ===================== -->
+      <div id="hud" class="overlay-layer">
+        <div class="hud-block hud-left">
+          <div class="hud-distance">0m</div>
+          <div class="hud-difficulty">City Flow</div>
+        </div>
+        <div class="hud-block hud-center">
+          <div class="flow-shell">
+            <div class="flow-fill" data-tier="1"></div>
+            <div class="flow-ticks">
+              <span class="flow-tick" style="left: 34%"></span>
+              <span class="flow-tick" style="left: 80%"></span>
+            </div>
+          </div>
+          <div class="flow-badge" title="Flow Save armed">✦</div>
+          <div class="flow-tier" data-tier="1">STEADY</div>
+        </div>
+        <div class="hud-block hud-right">
+          <button class="icon-btn" id="hud-restart" title="Restart (R)" aria-label="Restart run">
+            &#8635;
+          </button>
+          <button class="icon-btn" id="hud-pause" title="Pause (Esc)" aria-label="Pause game">
+            &#10073;&#10073;
+          </button>
+        </div>
+      </div>
+
+      <!-- ===================== TITLE ===================== -->
+      <div id="title-screen" class="overlay-layer is-visible">
+        <div class="title-inner">
+          <h1 class="game-title">STEPWISE</h1>
+          <p class="game-subtitle">2D Procedural IK Rooftop Parkour</p>
+          <button id="play-button" class="play-button">PLAY</button>
+          <button
+            id="title-settings-button"
+            class="icon-btn floating-settings"
+            title="Settings"
+            aria-label="Settings"
+          >
+            &#9881;
+          </button>
+          <div class="title-hints">
+            <span><kbd>A</kbd><kbd>D</kbd> / <kbd>&larr;</kbd><kbd>&rarr;</kbd> move</span>
+            <span><kbd>Space</kbd> jump &amp; vault</span>
+            <span><kbd>S</kbd> slide &amp; roll</span>
+            <span><kbd>I</kbd> IK debug</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- ===================== PAUSE ===================== -->
+      <div id="pause-screen" class="overlay-layer">
+        <div class="pause-card">
+          <h2>PAUSED</h2>
+          <p>Press <kbd>Esc</kbd> to resume or <kbd>R</kbd> to restart.</p>
+          <button id="resume-button" class="play-button">RESUME</button>
+        </div>
+      </div>
+
+      <!-- ===================== SUMMARY ===================== -->
+      <div id="summary" class="overlay-layer">
+        <div class="summary-card">
+          <div class="summary-header">RUN ENDED</div>
+          <div class="summary-distance">0m</div>
+          <div class="summary-pb">Personal best 0m</div>
+
+          <div class="summary-stats">
+            <div class="stat">
+              <span class="stat-value" data-stat="peak">0%</span>
+              <span class="stat-label">Peak Flow</span>
+            </div>
+            <div class="stat">
+              <span class="stat-value" data-stat="moves">0</span>
+              <span class="stat-label">Clean Moves</span>
+            </div>
+            <div class="stat">
+              <span class="stat-value" data-stat="saves">0</span>
+              <span class="stat-label">Flow Saves</span>
+            </div>
+          </div>
+
+          <button id="again-button" class="play-button">RUN AGAIN</button>
+          <p class="summary-hint"><kbd>Space</kbd> / <kbd>Enter</kbd> / tap to run again</p>
+
+          <div class="summary-quick">
+            <div class="quick-group">
+              <span class="quick-label">Difficulty</span>
+              <div class="summary-diffs"></div>
+            </div>
+            <div class="quick-group">
+              <span class="quick-label">Sky Mood</span>
+              <div class="summary-moods"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ===================== SETTINGS ===================== -->
+      <div id="settings" class="overlay-layer">
+        <div class="settings-card">
+          <div class="settings-header">
+            <h2>Settings</h2>
+            <button id="settings-close" class="icon-btn" aria-label="Close settings">
+              &#10005;
+            </button>
+          </div>
+          <div class="settings-body"></div>
+        </div>
+      </div>
+    </div>
+
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>

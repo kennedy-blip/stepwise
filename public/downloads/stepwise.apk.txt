@@ -1,0 +1,11 @@
+PLACEHOLDER — the signed Android APK is not in this build yet.
+
+See README.txt in this folder for the full packaging instructions.
+
+The "Download Android APK (One-Tap)" button in Settings points at
+/downloads/stepwise.apk. Drop the real, signed binary at:
+
+    public/downloads/stepwise.apk
+
+then run `npm run build` and redeploy to Vercel. Until then the game is
+fully playable in the browser (desktop, mobile web and installed as a PWA).
