@@ -195,7 +195,8 @@ export class InputManager {
 
       if (side === 'right') {
         this.touchRight.mode = y > rect.height * 0.6 ? 'crouch' : 'jump';
-        this.onAction?.(this.touchRight.mode);
+        if (this.touchRight.mode === 'crouch') this.onAction?.('crouch');
+        else this.onAction?.('jump');
       }
       this.touchPositions = active;
       e.preventDefault();
