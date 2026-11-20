@@ -314,12 +314,148 @@ export function woodTexture(tint = '#4a382c'): THREE.Texture {
 }
 
 /**
+ * Skin tone map for the runner's face, hands and forearms.
+ *
+ * A flat colour reads as plastic under a moving key light. A faint
+ * mottling gives the surface something to catch, which is what makes skin
+ * look like skin rather than painted plastic.
+ */
+export function skinTexture(tint = '#c98d6b'): THREE.Texture {
+  return buildTexture(`skin-${tint}`, 128, (ctx, size) => {
+    ctx.fillStyle = tint;
+    ctx.fillRect(0, 0, size, size);
+    // Soft blotches of slightly varied tone.
+    for (let i = 0; i < 90; i++) {
+      const x = Math.random() * size;
+      const y = Math.random() * size;
+      const r = 3 + Math.random() * 11;
+      const g = ctx.createRadialGradient(x, y, 0, x, y, r);
+      const light = Math.random() > 0.5;
+      g.addColorStop(0, light ? 'rgba(255,225,205,0.16)' : 'rgba(120,70,50,0.14)');
+      g.addColorStop(1, 'rgba(0,0,0,0)');
+      ctx.fillStyle = g;
+      ctx.fillRect(x - r, y - r, r * 2, r * 2);
+    }
+  });
+}
+
+/**
+ * Woven fabric map for the runner's clothing.
+ *
+ * A fine cross-hatch keeps the jacket and trousers from looking like flat
+ * coloured plastic when the runner turns through the key light.
+ */
+export function fabricTexture(tint = '#1a1d27'): THREE.Texture {
+  return buildTexture(`fabric-${tint}`, 128, (ctx, size) => {
+    ctx.fillStyle = tint;
+    ctx.fillRect(0, 0, size, size);
+    ctx.strokeStyle = 'rgba(255,255,255,0.055)';
+    ctx.lineWidth = 1;
+    for (let i = 0; i < size; i += 3) {
+      ctx.beginPath();
+      ctx.moveTo(i, 0);
+      ctx.lineTo(i, size);
+      ctx.stroke();
+    }
+    ctx.strokeStyle = 'rgba(0,0,0,0.10)';
+    for (let i = 0; i < size; i += 3) {
+      ctx.beginPath();
+      ctx.moveTo(0, i);
+      ctx.lineTo(size, i);
+      ctx.stroke();
+    }
+    // A few darker fibres for grain.
+    ctx.fillStyle = 'rgba(0,0,0,0.06)';
+    for (let i = 0; i < 400; i++) {
+      ctx.fillRect(Math.random() * size, Math.random() * size, 1, 1);
+    }
+  });
+}
+
+/**
  * Emissive window grid for the background city, tinted per sky mood.
  */
 export function windowTexture(color: string, density: number, key: string): THREE.Texture {
   return buildTexture(`windows-${key}`, 128, (ctx, size) =>
     paintWindows(ctx, size, 8, 12, color, density),
   );
+}
+
+/**
+ * Building facade for the near face of a rooftop block.
+ *
+ * The playable slabs are extruded boxes. Seen from the front, their side
+ * faces are a large flat area of concrete, which is exactly what makes a
+ * rooftop read as a grey plank instead of the top of a real building.
+ *
+ * This map paints that face as a facade: a concrete ground floor, rows of
+ * windows in recessed dark frames, a horizontal floor band between each
+ * row, and the occasional lit room. It is used on the front and back faces
+ * of the slab, so the roof block reads as a tower from any angle.
+ */
+export function facadeTexture(tint = '#2c313c'): THREE.Texture {
+  return buildTexture(`facade-${tint}`, 512, (ctx, size) => {
+    ctx.fillStyle = tint;
+    ctx.fillRect(0, 0, size, size);
+
+    // Ground floor: a plinth of darker stone.
+    const plinth = Math.round(size * 0.14);
+    ctx.fillStyle = 'rgba(0,0,0,0.32)';
+    ctx.fillRect(0, size - plinth, size, plinth);
+
+    // Window rows.
+    const rows = 6;
+    const cols = 10;
+    const top = size * 0.06;
+    const rowH = (size - plinth - top) / rows;
+    const colW = size / cols;
+
+    for (let r = 0; r < rows; r++) {
+      const y = top + r * rowH;
+
+      // Floor band between rows.
+      ctx.fillStyle = 'rgba(255,255,255,0.055)';
+      ctx.fillRect(0, y + rowH - 3, size, 3);
+
+      for (let c = 0; c < cols; c++) {
+        const x = c * colW;
+        const padX = colW * 0.22;
+        const padY = rowH * 0.24;
+        const w = colW - padX * 2;
+        const h = rowH - padY * 2;
+
+        // Recessed frame.
+        ctx.fillStyle = 'rgba(0,0,0,0.5)';
+        ctx.fillRect(x + padX - 2, y + padY - 2, w + 4, h + 4);
+
+        // Glass. Most rooms are dark; a few are lit.
+        const seed = rand(r * 13.7 + c * 3.3);
+        if (seed > 0.76) {
+          ctx.fillStyle = 'rgba(255,206,140,0.62)';
+        } else if (seed > 0.4) {
+          ctx.fillStyle = 'rgba(120,160,200,0.2)';
+        } else {
+          ctx.fillStyle = 'rgba(16,22,32,0.86)';
+        }
+        ctx.fillRect(x + padX, y + padY, w, h);
+
+        // A thin mullion splits each window.
+        ctx.fillStyle = 'rgba(0,0,0,0.45)';
+        ctx.fillRect(x + padX + w / 2 - 1, y + padY, 2, h);
+      }
+    }
+
+    // Vertical grime streaks, so the facade is not perfectly clean.
+    for (let i = 0; i < 60; i++) {
+      const x = rand(i * 5.3) * size;
+      const w = 1 + rand(i * 7.1) * 4;
+      const g = ctx.createLinearGradient(0, 0, 0, size);
+      g.addColorStop(0, 'rgba(0,0,0,0.22)');
+      g.addColorStop(1, 'rgba(0,0,0,0)');
+      ctx.fillStyle = g;
+      ctx.fillRect(x, 0, w, size);
+    }
+  });
 }
 
 /** Disposes every cached texture. Used on teardown. */

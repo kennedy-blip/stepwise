@@ -18,6 +18,7 @@ import { SKELETON } from '../game/config';
 import { FLOW_COLORS } from '../game/config';
 import type { CharacterRig } from '../game/rig';
 import { simX, simY } from './units';
+import { fabricTexture, skinTexture } from './textures3d';
 
 /** Z offsets that separate the left and right limbs in depth. */
 const LIMB_Z = 0.15;
@@ -53,9 +54,15 @@ const BODY = {
 } as const;
 
 export interface HumanoidMaterials {
+  /** Clothing fabric. */
   body: THREE.MeshStandardMaterial;
+  /** Exposed skin. */
+  skin: THREE.MeshStandardMaterial;
+  /** Trim, shoes and hard surfaces. */
   accent: THREE.MeshStandardMaterial;
+  /** Shoe soles. */
   sole: THREE.MeshStandardMaterial;
+  /** The scarf ribbon. */
   scarf: THREE.MeshStandardMaterial;
 }
 
@@ -98,21 +105,35 @@ export class Humanoid3D {
 
   constructor() {
     this.materials = {
+      // Clothing: a woven fabric map keeps the jacket and trousers from
+      // looking like flat coloured plastic as the runner turns. The tone is
+      // a mid slate rather than near-black, because a black silhouette
+      // disappears against a night rooftop.
       body: new THREE.MeshStandardMaterial({
-        color: '#1a1d27',
-        roughness: 0.62,
-        metalness: 0.18,
+        color: '#4a5570',
+        map: fabricTexture('#4a5570'),
+        roughness: 0.74,
+        metalness: 0.08,
       }),
+      // Exposed skin: face, hands, forearms.
+      skin: new THREE.MeshStandardMaterial({
+        color: '#d19a75',
+        map: skinTexture('#d19a75'),
+        roughness: 0.66,
+        metalness: 0.0,
+      }),
+      // The trim, the shoes and the visor carry a small emissive so the
+      // runner keeps a readable highlight even in the darkest mood.
       accent: new THREE.MeshStandardMaterial({
         color: '#e9eef5',
-        roughness: 0.42,
-        metalness: 0.35,
+        roughness: 0.38,
+        metalness: 0.4,
         emissive: new THREE.Color('#e9eef5'),
-        emissiveIntensity: 0.2,
+        emissiveIntensity: 0.22,
       }),
       sole: new THREE.MeshStandardMaterial({
         color: '#dfe6ef',
-        roughness: 0.85,
+        roughness: 0.82,
         metalness: 0.05,
       }),
       scarf: new THREE.MeshStandardMaterial({
@@ -203,13 +224,13 @@ export class Humanoid3D {
     // below is measured from that anchor using the skeleton lengths.
     const neckMesh = new THREE.Mesh(
       new THREE.CylinderGeometry(0.055, 0.065, BODY.neckLength * 0.7, 8),
-      m.body,
+      m.skin,
     );
     neckMesh.position.y = BODY.neckLength * 0.35;
     neckMesh.castShadow = true;
     this.neck.add(neckMesh);
 
-    const headMesh = new THREE.Mesh(new THREE.SphereGeometry(BODY.headRadius, 16, 14), m.body);
+    const headMesh = new THREE.Mesh(new THREE.SphereGeometry(BODY.headRadius, 16, 14), m.skin);
     headMesh.position.y = BODY.neckLength;
     headMesh.castShadow = true;
     this.neck.add(headMesh);
@@ -234,6 +255,39 @@ export class Humanoid3D {
     );
     this.neck.add(visor);
 
+    // --- Face ------------------------------------------------------------
+    // A nose and a pair of eyes. Without them the head is a ball, and the
+    // runner reads as a mannequin rather than a person.
+    const nose = new THREE.Mesh(
+      new THREE.ConeGeometry(BODY.headRadius * 0.2, BODY.headRadius * 0.34, 6),
+      m.skin,
+    );
+    nose.rotation.x = Math.PI / 2;
+    nose.position.set(
+      BODY.headRadius * 0.34,
+      BODY.neckLength - BODY.headRadius * 0.04,
+      BODY.headRadius * 0.88,
+    );
+    this.neck.add(nose);
+
+    for (const eyeZ of [-1, 1]) {
+      const eye = new THREE.Mesh(new THREE.SphereGeometry(BODY.headRadius * 0.13, 8, 6), m.accent);
+      eye.position.set(
+        BODY.headRadius * 0.3,
+        BODY.neckLength + BODY.headRadius * 0.14,
+        eyeZ * BODY.headRadius * 0.34,
+      );
+      this.neck.add(eye);
+    }
+
+    // Ears.
+    for (const earZ of [-1, 1]) {
+      const ear = new THREE.Mesh(new THREE.SphereGeometry(BODY.headRadius * 0.2, 8, 6), m.skin);
+      ear.scale.set(0.45, 1, 0.7);
+      ear.position.set(BODY.headRadius * 0.02, BODY.neckLength, earZ * BODY.headRadius * 0.92);
+      this.neck.add(ear);
+    }
+
     this.group.add(this.neck);
 
     // --- Arms ---------------------------------------------------------------
@@ -253,13 +307,13 @@ export class Humanoid3D {
 
       const foreMesh = new THREE.Mesh(
         new THREE.CapsuleGeometry(0.045, SKELETON.foreArmLength / 40 - 0.09, 4, 8),
-        m.body,
+        m.skin,
       );
       foreMesh.position.y = -(SKELETON.foreArmLength / 40) / 2;
       foreMesh.castShadow = true;
       fore.add(foreMesh);
 
-      const handMesh = new THREE.Mesh(new THREE.BoxGeometry(0.09, 0.13, 0.07), m.body);
+      const handMesh = new THREE.Mesh(new THREE.BoxGeometry(0.09, 0.13, 0.07), m.skin);
       handMesh.position.y = -0.06;
       handMesh.castShadow = true;
       hand.add(handMesh);
@@ -300,14 +354,32 @@ export class Humanoid3D {
       shinMesh.castShadow = true;
       shin.add(shinMesh);
 
-      const footMesh = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.07, 0.14), m.body);
-      footMesh.position.set(0.06, -0.035, 0);
-      footMesh.castShadow = true;
-      foot.add(footMesh);
+      // A runner's shoe: a shaped upper, a bright midsole and a heel
+      // block. A single flat box reads as a flipper.
+      const upper = new THREE.Mesh(new THREE.BoxGeometry(0.27, 0.075, 0.13), m.accent);
+      upper.position.set(0.05, -0.03, 0);
+      upper.castShadow = true;
+      foot.add(upper);
 
-      const sole = new THREE.Mesh(new THREE.BoxGeometry(0.31, 0.022, 0.15), m.sole);
-      sole.position.set(0.06, -0.07, 0);
+      // Toe box tapers forward.
+      const toe = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.06, 0.115), m.accent);
+      toe.position.set(0.2, -0.028, 0);
+      toe.castShadow = true;
+      foot.add(toe);
+
+      // Midsole.
+      const sole = new THREE.Mesh(new THREE.BoxGeometry(0.32, 0.024, 0.145), m.sole);
+      sole.position.set(0.06, -0.068, 0);
       foot.add(sole);
+
+      // Heel block and ankle collar.
+      const heel = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.05, 0.125), m.sole);
+      heel.position.set(-0.07, -0.05, 0);
+      foot.add(heel);
+
+      const collar = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.06, 0.115), m.body);
+      collar.position.set(-0.06, 0.02, 0);
+      foot.add(collar);
 
       // The knee and ankle are positioned in WORLD space each frame, so
       // they hang off the root rather than off the thigh.

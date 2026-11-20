@@ -26,6 +26,7 @@ import { Humanoid3D } from '../src/render3d/humanoid3d';
 import { Camera3D } from '../src/render3d/camera3d';
 import { LightingRig, LIGHTING_PRESETS } from '../src/render3d/lighting3d';
 import { DEPTH, simX, simY } from '../src/render3d/units';
+import { dressingFor, buildFacade, buildRooftopDressing } from '../src/render3d/rooftop3d';
 import { isWebGLAvailable, createPresenter, initPresenter } from '../src/render3d/presenter';
 
 /** Counts the meshes currently attached to a group. */
@@ -469,5 +470,284 @@ describe('Presenter — WebGL detection and fallback', () => {
     expect(() => presenter.resize(1280, 720)).not.toThrow();
     expect(() => presenter.applyMood('dawn')).not.toThrow();
     expect(() => presenter.dispose()).not.toThrow();
+  });
+});
+
+describe('Rooftop dressing — realistic rooftop plant', () => {
+  it('lays out plant deterministically for the same slab', () => {
+    const a = dressingFor(7, 12, 2.6);
+    const b = dressingFor(7, 12, 2.6);
+    expect(a).toEqual(b);
+    expect(a.length).toBeGreaterThan(0);
+  });
+
+  it('skips narrow slabs that cannot carry plant', () => {
+    expect(dressingFor(3, 1.5, 2.6)).toHaveLength(0);
+  });
+
+  it('never places decoration in front of the traversal plane', () => {
+    const slots = dressingFor(11, 14, 2.6);
+    for (const slot of slots) {
+      // The parapet lip lives at Z = +1.28; nothing may sit in front of it.
+      expect(slot.z).toBeLessThan(DEPTH.playableHalf);
+    }
+  });
+
+  it('builds a dressing group whose meshes all stay behind the play plane', () => {
+    const unitBox = new THREE.BoxGeometry(1, 1, 1);
+    const unitCylinder = (segments: number) => new THREE.CylinderGeometry(1, 1, 1, segments);
+    const mat = new THREE.MeshStandardMaterial();
+    const group = buildRooftopDressing(
+      { x: 0, y: 600, w: 480, h: 160, angle: 0 },
+      5,
+      unitBox,
+      unitCylinder,
+      {
+        metal: mat,
+        darkMetal: mat,
+        vent: mat,
+        crate: mat,
+        seam: mat,
+        puddle: mat,
+        parapet: mat,
+        facade: mat,
+      },
+    );
+
+    expect(countMeshes(group)).toBeGreaterThan(0);
+    group.updateMatrixWorld(true);
+    const box = new THREE.Box3().setFromObject(group);
+    // The whole dressing volume must remain behind the front lip.
+    expect(box.max.z).toBeLessThanOrEqual(DEPTH.parapet + 0.001);
+    expect(Number.isFinite(box.min.z)).toBe(true);
+    expect(Number.isFinite(box.max.z)).toBe(true);
+  });
+});
+
+describe('World3D — distance culling keeps the draw count sane', () => {
+  it('draws far fewer meshes than a fully dressed city contains', () => {
+    const world = new World({ difficulty: 'medium', seed: 991 });
+    world.start();
+    const world3d = new World3D();
+    world3d.build();
+    world3d.sync(world.terrain, world.player.x);
+
+    let total = 0;
+    world3d.group.traverse((obj) => {
+      if (obj instanceof THREE.Mesh) total++;
+    });
+    let visible = 0;
+    world3d.group.traverseVisible((obj) => {
+      if (obj instanceof THREE.Mesh) visible++;
+    });
+
+    // Culling must actually remove meshes from the render path.
+    expect(visible).toBeLessThan(total);
+    // And the visible set must stay small enough for a phone.
+    expect(visible).toBeLessThan(600);
+  });
+
+  it('keeps the slab under the runner visible at all times', () => {
+    const world = new World({ difficulty: 'medium', seed: 31337 });
+    world.start();
+    const world3d = new World3D();
+    world3d.build();
+    for (let i = 0; i < 40; i++) {
+      world.update(1 / 60);
+      world3d.sync(world.terrain, world.player.x);
+    }
+    // The camera is anchored to the runner, so at least some slab must be
+    // drawn even after the far ones are culled.
+    let visible = 0;
+    world3d.group.traverseVisible((obj) => {
+      if (obj instanceof THREE.Mesh) visible++;
+    });
+    expect(visible).toBeGreaterThan(0);
+  });
+});
+
+describe('LightingRig — sun disc and street haze', () => {
+  it('gives every mood a sun disc and a haze opacity', () => {
+    for (const mood of ['dusk', 'rain', 'dawn'] as const) {
+      const preset = LIGHTING_PRESETS[mood];
+      expect(preset.sunDisc).toBeGreaterThanOrEqual(0);
+      expect(preset.sunDisc).toBeLessThanOrEqual(1);
+      expect(preset.hazeOpacity).toBeGreaterThan(0);
+      expect(preset.hazeOpacity).toBeLessThanOrEqual(1);
+    }
+  });
+
+  it('hides the sun disc in rain and shows it at dusk', () => {
+    expect(LIGHTING_PRESETS.rain.sunDisc).toBe(0);
+    expect(LIGHTING_PRESETS.dusk.sunDisc).toBeGreaterThan(0);
+  });
+
+  it('drives the sky shader and haze material from the preset', () => {
+    const scene = new THREE.Scene();
+    const rig = new LightingRig(scene);
+    rig.apply('dawn');
+    expect(rig.skyMaterial.uniforms.sunDisc.value).toBeCloseTo(LIGHTING_PRESETS.dawn.sunDisc, 5);
+    expect((rig.hazeMaterial as THREE.ShaderMaterial).uniforms.opacity.value).toBeCloseTo(
+      LIGHTING_PRESETS.dawn.hazeOpacity,
+      5,
+    );
+  });
+
+  it('builds two haze layers for street depth', () => {
+    const scene = new THREE.Scene();
+    const rig = new LightingRig(scene);
+    expect(rig.hazeMaterial).toBeDefined();
+    expect(rig.hazeFar).toBeDefined();
+    expect(rig.hazeFar).not.toBe(rig.hazeMaterial);
+  });
+});
+
+describe('Humanoid3D — materials read as a person', () => {
+  it('uses fabric on the clothing and skin on the exposed parts', () => {
+    const humanoid = new Humanoid3D();
+    let hasFabric = false;
+    let hasSkin = false;
+    humanoid.group.traverse((obj) => {
+      if (!(obj instanceof THREE.Mesh)) return;
+      const mat = obj.material as THREE.MeshStandardMaterial;
+      if (mat.map && mat.roughness > 0.7) hasFabric = true;
+      if (
+        mat.map &&
+        mat.roughness > 0.6 &&
+        mat.metalness === 0 &&
+        mat.color.getHexString() === 'd19a75'
+      )
+        hasSkin = true;
+    });
+    expect(hasFabric).toBe(true);
+    expect(hasSkin).toBe(true);
+  });
+
+  it('builds a face with eyes, a nose and ears', () => {
+    const humanoid = new Humanoid3D();
+    let cones = 0;
+    let spheres = 0;
+    humanoid.group.traverse((obj) => {
+      if (!(obj instanceof THREE.Mesh)) return;
+      if (obj.geometry instanceof THREE.ConeGeometry) cones++;
+      if (obj.geometry instanceof THREE.SphereGeometry) spheres++;
+    });
+    // The nose.
+    expect(cones).toBeGreaterThan(0);
+    // Head, cap, two eyes and two ears.
+    expect(spheres).toBeGreaterThanOrEqual(5);
+  });
+});
+
+describe('World3D — background city', () => {
+  it('keeps the near and deep city inside their depth bands', () => {
+    const world = new World({ difficulty: 'medium', seed: 5150 });
+    world.start();
+    const world3d = new World3D();
+    world3d.build();
+    world3d.sync(world.terrain, world.player.x);
+    world3d.group.updateMatrixWorld(true);
+
+    const box = new THREE.Box3().setFromObject(world3d.group);
+    // The play surface itself reaches DEPTH.playableHalf; nothing may go
+    // beyond that.
+    expect(box.max.z).toBeLessThanOrEqual(DEPTH.playableHalf + 0.001);
+    // The city must reach back into the deep skyline band.
+    expect(box.min.z).toBeLessThan(DEPTH.deepSkyline.far);
+  });
+
+  it('scrolls the city with the camera so a skyline is always behind', () => {
+    const world = new World({ difficulty: 'medium', seed: 771 });
+    world.start();
+    const world3d = new World3D();
+    world3d.build();
+
+    // The city scrolls in whole tiles, so it only moves once the runner
+    // has covered a whole tile. The runner needs to travel a long way for
+    // the scroll to be observable.
+    const positions: number[] = [];
+    for (let i = 0; i < 4000; i++) {
+      // The autopilot keeps the runner moving, so the camera travels far
+      // enough for the city to roll through several tiles.
+      world.currentInput = {
+        moveX: 1,
+        jumpHeld: false,
+        jumpPressed: false,
+        crouchHeld: false,
+        crouchPressed: false,
+      };
+      world.update(1 / 60);
+      world3d.sync(world.terrain, world.player.x);
+      // The background city is the only thing that scrolls with the camera
+      // at a fixed tile size, so it is identified by the size of its
+      // children.
+      const city = world3d.group.children.find(
+        (child) => child instanceof THREE.Group && child.children.length > 40,
+      );
+      expect(city).toBeDefined();
+      positions.push((city as THREE.Group).position.x);
+    }
+
+    // The city must have moved with the runner, not stayed parked at the
+    // origin. A city pinned to one X leaves an empty sky behind the player.
+    const spread = Math.max(...positions) - Math.min(...positions);
+    expect(spread).toBeGreaterThan(100);
+
+    // And it must stay in step with the runner rather than drifting away.
+    // The deep skyline scrolls in bigger tiles than the near city, so it
+    // is allowed to sit further behind the runner.
+    const cameraMetres = world.player.x / 40;
+    for (const pos of positions) {
+      expect(Math.abs(pos - cameraMetres)).toBeLessThan(1000);
+    }
+  });
+
+  it('builds a skyline dense enough that the background is never empty', () => {
+    const world = new World({ difficulty: 'medium', seed: 4242 });
+    world.start();
+    const world3d = new World3D();
+    world3d.build();
+    world3d.sync(world.terrain, world.player.x);
+    world3d.group.updateMatrixWorld(true);
+
+    let towers = 0;
+    world3d.group.traverse((obj) => {
+      if (!(obj instanceof THREE.Mesh)) return;
+      const z = obj.getWorldPosition(new THREE.Vector3()).z;
+      if (z < DEPTH.deepSkyline.near) towers++;
+    });
+    expect(towers).toBeGreaterThan(20);
+  });
+});
+
+describe('Rooftop facade — the building under the roof', () => {
+  it('skins the front face of the roof block with windows', () => {
+    const unitBox = new THREE.BoxGeometry(1, 1, 1);
+    const mat = new THREE.MeshStandardMaterial();
+    const group = buildFacade(12, 6, unitBox, mat);
+    expect(countMeshes(group)).toBeGreaterThan(1);
+    group.updateMatrixWorld(true);
+    const box = new THREE.Box3().setFromObject(group);
+    // It hangs below the roof line...
+    expect(box.max.y).toBeLessThanOrEqual(0.01);
+    // ...and never reaches in front of the parapet.
+    expect(box.max.z).toBeLessThanOrEqual(DEPTH.parapet + 0.001);
+  });
+
+  it('caps the facade height so it cannot fill the screen', () => {
+    const unitBox = new THREE.BoxGeometry(1, 1, 1);
+    const mat = new THREE.MeshStandardMaterial();
+    const tall = buildFacade(12, 400, unitBox, mat);
+    tall.updateMatrixWorld(true);
+    const box = new THREE.Box3().setFromObject(tall);
+    // A 400 m tall block must still only skin the top storeys.
+    expect(box.max.y - box.min.y).toBeLessThan(12);
+  });
+
+  it('skips the facade for blocks too small to carry one', () => {
+    const unitBox = new THREE.BoxGeometry(1, 1, 1);
+    const mat = new THREE.MeshStandardMaterial();
+    expect(countMeshes(buildFacade(0.1, 6, unitBox, mat))).toBe(0);
+    expect(countMeshes(buildFacade(6, 0.1, unitBox, mat))).toBe(0);
   });
 });
