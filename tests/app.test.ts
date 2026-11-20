@@ -8,6 +8,7 @@
 
 import { describe, expect, it, beforeEach, afterEach, vi } from 'vitest';
 import { Window } from 'happy-dom';
+import { makeCanvasContext } from './helpers/dom';
 
 const MARKUP = `
   <div id="app">
@@ -80,46 +81,6 @@ const MARKUP = `
   </div>`;
 
 /** A Canvas2D stub that records nothing but never throws. */
-function makeCanvasContext(): Record<string, unknown> {
-  const noop = (): void => undefined;
-  return {
-    canvas: { width: 1280, height: 720 },
-    fillStyle: '',
-    strokeStyle: '',
-    lineWidth: 1,
-    lineCap: 'butt',
-    globalAlpha: 1,
-    font: '',
-    textAlign: 'start',
-    shadowColor: '',
-    shadowBlur: 0,
-    save: noop,
-    restore: noop,
-    scale: noop,
-    translate: noop,
-    rotate: noop,
-    beginPath: noop,
-    closePath: noop,
-    clip: noop,
-    moveTo: noop,
-    lineTo: noop,
-    arc: noop,
-    rect: noop,
-    quadraticCurveTo: noop,
-    fill: noop,
-    stroke: noop,
-    fillRect: noop,
-    strokeRect: noop,
-    clearRect: noop,
-    fillText: noop,
-    setLineDash: noop,
-    drawImage: noop,
-    createLinearGradient: () => ({ addColorStop: noop }),
-    createRadialGradient: () => ({ addColorStop: noop }),
-    measureText: () => ({ width: 10 }),
-  };
-}
-
 describe('App shell', () => {
   let win: Window;
   let rafCallbacks: ((t: number) => void)[] = [];

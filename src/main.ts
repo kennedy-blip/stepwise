@@ -12,20 +12,53 @@ import './styles.css';
 
 import { InputManager } from './core/input';
 import { AudioSynth } from './audio/synth';
-import { Renderer } from './render/renderer';
+import { initPresenter, type Presenter } from './render3d/presenter';
+import { detectDefaultPreset } from './engine/quality';
 import { UI } from './ui/hud';
 import { World } from './game/world';
 import { PHYSICS } from './game/config';
-import type { Difficulty, GameSettings, SkyMood } from './core/types';
+import type { Difficulty, GameSettings, GraphicsPreset, SkyMood } from './core/types';
 
 const STORAGE_KEY = 'stepwise.settings.v1';
 const BEST_KEY = 'stepwise.personalBest.v1';
+
+/**
+ * A presenter that draws nothing.
+ *
+ * It stands in for the real renderer during the first few milliseconds while
+ * the 3D chunk is downloading, so the game loop can start right away.
+ */
+class NullPresenter implements Presenter {
+  readonly is3D = false;
+  readonly preset: GraphicsPreset = 'performance';
+  render(): void {
+    /* nothing to draw yet */
+  }
+  resize(): void {
+    /* no surface to resize */
+  }
+  applyMood(): void {
+    /* no scene yet */
+  }
+  applyPreset(): void {
+    /* no scene yet */
+  }
+  addShake(): void {
+    /* no scene yet */
+  }
+  triggerZoomPulse(): void {
+    /* no scene yet */
+  }
+  dispose(): void {
+    /* nothing to release */
+  }
+}
 
 class App {
   private canvas: HTMLCanvasElement;
   private root: HTMLElement;
   private world: World;
-  private renderer: Renderer;
+  private renderer: Presenter;
   private ui: UI;
   private input: InputManager;
   private audio = new AudioSynth();
@@ -39,6 +72,7 @@ class App {
     showDebug: false,
     haptics: true,
     frameRateTarget: 60,
+    graphicsPreset: detectDefaultPreset(),
   };
 
   private paused = false;
@@ -53,7 +87,7 @@ class App {
     this.loadSettings();
 
     this.world = new World({ difficulty: this.settings.difficulty });
-    this.renderer = new Renderer(this.canvas);
+    this.renderer = new NullPresenter();
     this.ui = new UI(this.root, this.settings);
     this.input = new InputManager(this.canvas);
 
@@ -64,6 +98,23 @@ class App {
     this.ui.showTitle();
     this.lastTime = performance.now();
     requestAnimationFrame(this.frame);
+
+    // Load the 3D chunk (or the 2D fallback) without blocking the first
+    // frame, so the title screen appears instantly.
+    void this.resolvePresenter();
+  }
+
+  /**
+   * Swaps in the real presenter once its chunk has loaded.
+   *
+   * Until then the app renders through a no-op presenter, so the game loop
+   * can start immediately and the player never sees a blank screen.
+   */
+  private async resolvePresenter(): Promise<void> {
+    const presenter = await initPresenter(this.canvas, this.settings.graphicsPreset);
+    this.renderer.dispose();
+    this.renderer = presenter;
+    this.applySettings();
   }
 
   // ----------------------------------------------------------------------
@@ -98,7 +149,7 @@ class App {
 
   private bindEvents(): void {
     // --- Resize ---
-    const onResize = () => this.renderer.resize();
+    const onResize = () => this.resizeRenderer();
     window.addEventListener('resize', onResize);
     window.addEventListener('orientationchange', onResize);
     if ('visualViewport' in window) {
@@ -156,6 +207,7 @@ class App {
     });
     this.root.addEventListener('stepwise:mood', (e) => {
       this.settings.skyMood = (e as CustomEvent<SkyMood>).detail;
+      this.renderer.applyMood(this.settings.skyMood);
       this.saveSettings();
     });
     this.root.addEventListener('stepwise:volume', (e) => {
@@ -185,6 +237,11 @@ class App {
       this.settings.frameRateTarget = (e as CustomEvent<60 | 120>).detail;
       this.saveSettings();
     });
+    this.root.addEventListener('stepwise:graphics', (e) => {
+      this.settings.graphicsPreset = (e as CustomEvent<GraphicsPreset>).detail;
+      this.renderer.applyPreset(this.settings.graphicsPreset);
+      this.saveSettings();
+    });
 
     // --- HUD buttons (static ones in index.html) ---
     // The restart and pause buttons are already wired by the UI layer, which
@@ -205,6 +262,16 @@ class App {
     this.audio.setVolume(this.settings.masterVolume);
     this.audio.setMuted(this.settings.muted);
     this.input.autoSprint = this.settings.autoSprint;
+    this.renderer.applyMood(this.settings.skyMood);
+    this.renderer.applyPreset(this.settings.graphicsPreset);
+    this.resizeRenderer();
+  }
+
+  /** Pushes the canvas' current size to the 3D renderer. */
+  private resizeRenderer(): void {
+    const width = this.canvas.clientWidth || window.innerWidth;
+    const height = this.canvas.clientHeight || window.innerHeight;
+    this.renderer.resize(width, height);
   }
 
   // ----------------------------------------------------------------------

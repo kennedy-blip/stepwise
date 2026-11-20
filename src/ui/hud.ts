@@ -383,6 +383,47 @@ export class UI {
     mobileSection.appendChild(autoHelp);
     body.appendChild(mobileSection);
 
+    // --- Graphics ---
+    const gfxSection = document.createElement('section');
+    gfxSection.className = 'settings-section';
+    gfxSection.innerHTML = '<h3>Graphics</h3>';
+
+    const gfxRow = document.createElement('div');
+    gfxRow.className = 'toggle-row';
+    const gfxLabel = document.createElement('span');
+    gfxLabel.textContent = 'Quality Preset';
+    const gfxWrap = document.createElement('div');
+    gfxWrap.className = 'pill-row';
+    (
+      [
+        { id: 'high' as const, label: 'High' },
+        { id: 'performance' as const, label: 'Performance' },
+      ]
+    ).forEach((preset) => {
+      const btn = document.createElement('button');
+      btn.className = 'mini-pill';
+      btn.textContent = preset.label;
+      btn.dataset.preset = preset.id;
+      if (this.settings.graphicsPreset === preset.id) btn.classList.add('is-active');
+      btn.addEventListener('click', () => {
+        this.settings.graphicsPreset = preset.id;
+        gfxWrap.querySelectorAll('.mini-pill').forEach((b) => b.classList.remove('is-active'));
+        btn.classList.add('is-active');
+        this.dispatchEvent(new CustomEvent('stepwise:graphics', { detail: preset.id }));
+      });
+      gfxWrap.appendChild(btn);
+    });
+    gfxRow.appendChild(gfxLabel);
+    gfxRow.appendChild(gfxWrap);
+    gfxSection.appendChild(gfxRow);
+
+    const gfxNote = document.createElement('small');
+    gfxNote.className = 'platform-note';
+    gfxNote.textContent =
+      'High renders bloom and 2K shadows. Performance cuts resolution, shadows and particles for smoother frame pacing on phones.';
+    gfxSection.appendChild(gfxNote);
+    body.appendChild(gfxSection);
+
     // --- Developer ---
     const devSection = document.createElement('section');
     devSection.className = 'settings-section';

@@ -39,6 +39,9 @@ export type Difficulty = 'easy' | 'medium' | 'hard';
 
 export type SkyMood = 'dusk' | 'rain' | 'dawn';
 
+/** 3D graphics quality preset. */
+export type GraphicsPreset = 'high' | 'performance';
+
 export type FlowTier = 1 | 2 | 3;
 
 export type PlayerState =
@@ -114,6 +117,8 @@ export interface GameSettings {
   showDebug: boolean;
   haptics: boolean;
   frameRateTarget: 60 | 120;
+  /** 3D graphics preset. Defaults are auto-detected on first run. */
+  graphicsPreset: GraphicsPreset;
 }
 
 export type RunOutcome = 'running' | 'finished' | 'dead';
