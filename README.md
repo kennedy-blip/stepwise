@@ -6,7 +6,7 @@ no sprite sheets, no audio files, no game engine.
 
 Runs on desktop web, mobile web, and as an installable Android APK.
 
-**Live:** https://stepwise-nine-gamma.vercel.app
+**Live:** https://stepwise-kmokaya864-5310.vercel.app
 
 ```bash
 npm install

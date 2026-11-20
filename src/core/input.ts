@@ -176,22 +176,61 @@ export class InputManager {
   }
 
   private bindPointerFallback(el: HTMLElement): void {
+    // Pointer Events cover touch-capable browsers that do not expose the
+    // legacy ontouchstart feature flag. Keep the same shared input model as
+    // the Touch Events path so left-thumb pacing and held jump/slide work.
+    const active = new Map<
+      number,
+      { side: 'left' | 'right'; x: number; y: number; startX: number; startY: number }
+    >();
+
     const down = (e: PointerEvent) => {
       if (e.pointerType === 'mouse') return;
       this.touchActive = true;
       const rect = el.getBoundingClientRect();
-      const side = e.clientX - rect.left < rect.width * 0.5 ? 'left' : 'right';
+      el.setPointerCapture?.(e.pointerId);
+      const x = e.clientX - rect.left;
+      const y = e.clientY - rect.top;
+      const side: 'left' | 'right' = x < rect.width * 0.5 ? 'left' : 'right';
+      active.set(e.pointerId, { side, x, y, startX: x, startY: y });
+
       if (side === 'right') {
-        this.touchRight.mode = 'jump';
-        this.onAction?.('jump');
+        this.touchRight.mode = y > rect.height * 0.6 ? 'crouch' : 'jump';
+        if (this.touchRight.mode === 'crouch') this.onAction?.('crouch');
+        else this.onAction?.('jump');
       }
+      this.touchPositions = active;
+      e.preventDefault();
     };
-    const up = () => {
-      this.touchRight.mode = 'none';
+
+    const move = (e: PointerEvent) => {
+      const rec = active.get(e.pointerId);
+      if (!rec) return;
+      const rect = el.getBoundingClientRect();
+      rec.x = e.clientX - rect.left;
+      rec.y = e.clientY - rect.top;
+
+      if (rec.side === 'right' && rec.y - rec.startY > 34 && this.touchRight.mode === 'jump') {
+        this.touchRight.mode = 'crouch';
+        this.onAction?.('crouch');
+      }
+      e.preventDefault();
     };
+
+    const up = (e: PointerEvent) => {
+      const rec = active.get(e.pointerId);
+      active.delete(e.pointerId);
+      if (rec?.side === 'right' && !Array.from(active.values()).some((item) => item.side === 'right')) {
+        this.touchRight.mode = 'none';
+      }
+      e.preventDefault();
+    };
+
     el.addEventListener('pointerdown', down);
+    el.addEventListener('pointermove', move);
     el.addEventListener('pointerup', up);
     el.addEventListener('pointercancel', up);
+    this.touchPositions = active;
   }
 
   private touchPositions?: Map<
@@ -246,8 +285,13 @@ export class InputManager {
         if (this.touchRight.mode === 'jump') jumpHeld = true;
         if (this.touchRight.mode === 'crouch') crouchHeld = true;
       }
-    } else if (this.touchActive && this.autoSprint) {
-      moveX = 1;
+    } else {
+      // Do not leave stale thumb indicators or held gestures after the last
+      // pointer is released/cancelled.
+      this.touchLeft.dx = 0;
+      this.touchLeft.active = false;
+      this.touchRight.mode = 'none';
+      if (this.touchActive && this.autoSprint) moveX = 1;
     }
 
     // --- Edge detection ----------------------------------------------------
