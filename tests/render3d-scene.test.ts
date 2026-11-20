@@ -111,6 +111,22 @@ describe('World3D — rooftop geometry', () => {
     expect(propGroups.length).toBe(world.terrain.hazards.length);
   });
 
+  it('pools geometry so the buffer count stays bounded', () => {
+    // Scroll a long way: the number of distinct geometry buffers must not
+    // grow with the number of props, or long runs would stutter on GC.
+    for (let i = 0; i < 600; i++) {
+      world.update(1 / 60);
+      world3d.sync(world.terrain, world.player.x);
+    }
+    const pool = (world3d as unknown as { geometryPool: Map<string, unknown> }).geometryPool;
+    expect(pool.size).toBeLessThanOrEqual(8);
+
+    // The pool must actually be in use.
+    const groups = (world3d as unknown as { hazardGroups: Map<unknown, THREE.Group> })
+      .hazardGroups;
+    expect(groups.size).toBeGreaterThan(0);
+  });
+
   it('does not accumulate meshes when synced repeatedly', () => {
     world3d.sync(world.terrain, world.player.x);
     const first = countMeshes(world3d.group);

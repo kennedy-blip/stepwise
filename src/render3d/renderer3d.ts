@@ -18,6 +18,7 @@ import { OutputPass } from 'three/examples/jsm/postprocessing/OutputPass.js';
 import type { SkyMood } from '../core/types';
 import type { World } from '../game/world';
 import type { CharacterRig } from '../game/rig';
+import type { IKBone } from '../physics/ik';
 import { FLOW_COLORS, SKY_MOODS } from '../game/config';
 import {
   detectDefaultPreset,
@@ -60,6 +61,7 @@ export class Renderer3D {
   private debugGroup = new THREE.Group();
   private debugBones!: THREE.LineSegments;
   private debugPoints!: THREE.Points;
+  private debugPoles!: THREE.LineSegments;
 
   /** 3D rain / dust particle field. */
   private weatherPoints!: THREE.Points;
@@ -129,8 +131,20 @@ export class Renderer3D {
     this.debugPoints.frustumCulled = false;
     this.debugPoints.visible = false;
 
+    // Pole vectors: the bend direction each IK chain folds toward. Drawn
+    // in a distinct colour so the three debug layers stay readable.
+    const poleGeo = new THREE.BufferGeometry();
+    poleGeo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(16 * 3), 3));
+    this.debugPoles = new THREE.LineSegments(
+      poleGeo,
+      new THREE.LineBasicMaterial({ color: 0xff5fd2, transparent: true, opacity: 0.8 }),
+    );
+    this.debugPoles.frustumCulled = false;
+    this.debugPoles.visible = false;
+
     this.debugGroup.add(this.debugBones);
     this.debugGroup.add(this.debugPoints);
+    this.debugGroup.add(this.debugPoles);
     this.scene.add(this.debugGroup);
   }
 
@@ -361,6 +375,43 @@ export class Renderer3D {
     this.debugBones.geometry.setDrawRange(0, bi / 3);
     this.debugBones.geometry.computeBoundingSphere();
 
+    // Pole vectors: derived from the solved chain geometry, pointing from
+    // the root toward the side the joint folds toward.
+    const poleAttr = this.debugPoles.geometry.getAttribute('position') as THREE.BufferAttribute;
+    const poleArr = poleAttr.array as Float32Array;
+    let polei = 0;
+    const addPole = (bone: IKBone | null, z: number): void => {
+      if (!bone || polei + 6 > poleArr.length) return;
+      // The bend direction is the component of (joint - root) that is
+      // perpendicular to (end - root).
+      const rx = bone.joint.x - bone.root.x;
+      const ry = bone.joint.y - bone.root.y;
+      const ex = bone.end.x - bone.root.x;
+      const ey = bone.end.y - bone.root.y;
+      const elen = Math.hypot(ex, ey);
+      if (elen < 1e-5) return;
+      const dot = (rx * ex + ry * ey) / (elen * elen);
+      const px = rx - ex * dot;
+      const py = ry - ey * dot;
+      const plen = Math.hypot(px, py);
+      if (plen < 1e-5) return;
+      const len = 26;
+      poleArr[polei++] = simX(bone.root.x);
+      poleArr[polei++] = simY(bone.root.y);
+      poleArr[polei++] = z;
+      poleArr[polei++] = simX(bone.root.x) + (px / plen) * len;
+      poleArr[polei++] = simY(bone.root.y) + (py / plen) * len;
+      poleArr[polei++] = z;
+    };
+    addPole(ll, 0.3);
+    addPole(rl, -0.3);
+    addPole(la, 0.3);
+    addPole(ra, -0.3);
+
+    poleAttr.needsUpdate = true;
+    this.debugPoles.geometry.setDrawRange(0, polei / 3);
+    this.debugPoles.geometry.computeBoundingSphere();
+
     // Joint markers.
     const pointAttr = this.debugPoints.geometry.getAttribute('position') as THREE.BufferAttribute;
     const pointArr = pointAttr.array as Float32Array;
@@ -405,6 +456,7 @@ export class Renderer3D {
     this.humanoid.dispose();
     this.lighting.dispose();
     this.debugBones.geometry.dispose();
+    this.debugPoles.geometry.dispose();
     this.debugPoints.geometry.dispose();
     this.weatherGeometry.dispose();
     this.weatherMaterial.dispose();

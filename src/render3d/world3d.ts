@@ -58,6 +58,16 @@ export class World3D {
 
   /** Live rooftop meshes, keyed by the slab they represent. */
   private slabMeshes = new Map<Slab, THREE.Mesh>();
+
+  /**
+   * A pool of reusable geometry buffers, keyed by a shape signature.
+   *
+   * Rooftops, props and debris are created and retired constantly as the
+   * camera scrolls. Allocating fresh buffers each time causes GC stutters
+   * mid-run, so shapes are cached and reused instead. Only genuinely new
+   * shape signatures allocate.
+   */
+  private geometryPool = new Map<string, THREE.BufferGeometry>();
   /** Live prop groups, keyed by the hazard they represent. */
   private hazardGroups = new Map<Hazard, THREE.Group>();
   /** Debris pieces for broken planks and glass. */
@@ -302,10 +312,10 @@ export class World3D {
     }
 
     // Retire slabs that are gone (new level) or scrolled off screen.
+    // The geometry is pooled, so it is NOT disposed here.
     for (const [slab, mesh] of this.slabMeshes) {
       if (seen.has(slab)) continue;
       this.group.remove(mesh);
-      mesh.geometry.dispose();
       this.slabMeshes.delete(slab);
     }
 
@@ -325,7 +335,8 @@ export class World3D {
     for (const [hazard, group] of this.hazardGroups) {
       if (seenHazards.has(hazard)) continue;
       this.group.remove(group);
-      this.disposeGroup(group);
+      // Geometry is pooled, so it is released rather than disposed.
+      this.releaseGroup(group);
       this.hazardGroups.delete(hazard);
     }
 
@@ -334,9 +345,47 @@ export class World3D {
     this.deepCity.position.x = Math.round(cameraX / 200) * 200;
   }
 
+  /**
+   * Returns a pooled geometry for the given shape signature.
+   *
+   * The signature must fully describe the geometry's parameters, so two
+   * calls with the same signature always yield an interchangeable buffer.
+   */
+  private pooledGeometry(signature: string, build: () => THREE.BufferGeometry): THREE.BufferGeometry {
+    const cached = this.geometryPool.get(signature);
+    if (cached) return cached;
+    const geo = build();
+    this.geometryPool.set(signature, geo);
+    return geo;
+  }
+
+  /** A pooled unit box, scaled per instance. */
+  private unitBox(): THREE.BufferGeometry {
+    return this.pooledGeometry('unit-box', () => new THREE.BoxGeometry(1, 1, 1));
+  }
+
+  /** A pooled unit cylinder (radius 0.5, height 1), scaled per instance. */
+  private unitCylinder(segments: number): THREE.BufferGeometry {
+    return this.pooledGeometry(
+      `unit-cyl-${segments}`,
+      () => new THREE.CylinderGeometry(0.5, 0.5, 1, segments),
+    );
+  }
+
+  /** A pooled unit torus, scaled per instance. */
+  private unitTorus(): THREE.BufferGeometry {
+    return this.pooledGeometry('unit-torus', () => new THREE.TorusGeometry(0.5, 0.125, 8, 14));
+  }
+
+  /** Releases every pooled geometry buffer. */
+  private disposeGeometryPool(): void {
+    for (const geo of this.geometryPool.values()) geo.dispose();
+    this.geometryPool.clear();
+  }
+
   /** Creates the mesh for a rooftop slab: an extruded top surface plus a body. */
   private createSlabMesh(slab: Slab): THREE.Mesh {
-    const geo = new THREE.BoxGeometry(1, 1, 1);
+    const geo = this.pooledGeometry('box1', () => new THREE.BoxGeometry(1, 1, 1));
     const mat = this.materials[slab.material] ?? this.materials.concrete;
     const mesh = new THREE.Mesh(geo, mat);
     mesh.castShadow = true;
@@ -372,35 +421,45 @@ export class World3D {
     const group = new THREE.Group();
     group.userData.hazard = hazard;
 
+    // All props are built from unit-sized primitives that are scaled to
+    // fit. That keeps the number of distinct geometry buffers tiny, so the
+    // pool stays small and nothing is allocated once the scene is warm.
+    const box = (w: number, h: number, d: number, mat: THREE.Material): THREE.Mesh => {
+      const mesh = new THREE.Mesh(this.unitBox(), mat);
+      mesh.scale.set(w, h, d);
+      return mesh;
+    };
+    const cyl = (
+      radius: number,
+      length: number,
+      segments: number,
+      mat: THREE.Material,
+    ): THREE.Mesh => {
+      const mesh = new THREE.Mesh(this.unitCylinder(segments), mat);
+      mesh.scale.set(radius * 2, length, radius * 2);
+      return mesh;
+    };
+
     switch (hazard.kind) {
       case 'pipe': {
         // Horizontal pipe spanning the lane, with supports set back in Z so
         // the runner slides in front of them without clipping.
         const clearance = hazard.meta?.clearance ?? 40;
         const pipeLen = hazard.w / 40;
-        const pipe = new THREE.Mesh(
-          new THREE.CylinderGeometry(0.18, 0.18, pipeLen, 12),
-          this.propMaterials.pipe,
-        );
+        const pipe = cyl(0.18, pipeLen, 12, this.propMaterials.pipe);
         pipe.rotation.z = Math.PI / 2;
         pipe.position.set(0, -0.12, 0);
         pipe.castShadow = true;
         group.add(pipe);
 
-        const highlight = new THREE.Mesh(
-          new THREE.CylinderGeometry(0.07, 0.07, pipeLen * 0.98, 8),
-          this.propMaterials.darkMetal,
-        );
+        const highlight = cyl(0.07, pipeLen * 0.98, 8, this.propMaterials.darkMetal);
         highlight.rotation.z = Math.PI / 2;
         highlight.position.set(0, -0.06, 0.06);
         group.add(highlight);
 
         // Support stanchions sit behind the runner at Z = -1.1.
         for (const sx of [0.25, 0.75]) {
-          const post = new THREE.Mesh(
-            new THREE.CylinderGeometry(0.09, 0.09, clearance / 40 + 0.2, 8),
-            this.propMaterials.darkMetal,
-          );
+          const post = cyl(0.09, clearance / 40 + 0.2, 8, this.propMaterials.darkMetal);
           post.position.set((sx - 0.5) * pipeLen, -clearance / 80 - 0.1, -1.1);
           post.castShadow = true;
           group.add(post);
@@ -409,26 +468,17 @@ export class World3D {
       }
       case 'spring': {
         // A compressed coil spring that launches the runner.
-        const base = new THREE.Mesh(
-          new THREE.CylinderGeometry(0.26, 0.3, 0.12, 12),
-          this.propMaterials.darkMetal,
-        );
+        const base = cyl(0.28, 0.12, 12, this.propMaterials.darkMetal);
         base.position.y = -0.16;
         base.castShadow = true;
         group.add(base);
 
-        const coil = new THREE.Mesh(
-          new THREE.TorusGeometry(0.2, 0.05, 8, 14),
-          this.propMaterials.pipe,
-        );
+        const coil = new THREE.Mesh(this.unitTorus(), this.propMaterials.pipe);
         coil.rotation.x = Math.PI / 2;
         coil.position.y = 0.02;
         group.add(coil);
 
-        const pad = new THREE.Mesh(
-          new THREE.CylinderGeometry(0.26, 0.26, 0.08, 12),
-          this.propMaterials.vent,
-        );
+        const pad = cyl(0.26, 0.08, 12, this.propMaterials.vent);
         pad.position.y = 0.16;
         pad.castShadow = true;
         group.add(pad);
@@ -438,12 +488,14 @@ export class World3D {
         // Individual slats so they can visibly tilt and drop.
         const slats = 4;
         for (let i = 0; i < slats; i++) {
-          const slat = new THREE.Mesh(
-            new THREE.BoxGeometry(hazard.w / 40 / slats - 0.04, hazard.h / 40, 1.4),
+          const slat = box(
+            hazard.w / 40 / slats - 0.04,
+            hazard.h / 40,
+            1.4,
             this.propMaterials.plank,
           );
           slat.position.set(
-            (i - (slats - 1) / 2) * ((hazard.w / 40) / slats),
+            (i - (slats - 1) / 2) * (hazard.w / 40 / slats),
             0,
             0,
           );
@@ -454,14 +506,18 @@ export class World3D {
         break;
       }
       case 'glass': {
-        const pane = new THREE.Mesh(
-          new THREE.BoxGeometry(hazard.w / 40, hazard.h / 40, 1.5),
+        const pane = box(
+          hazard.w / 40,
+          hazard.h / 40,
+          1.5,
           this.propMaterials.glassPane,
         );
         pane.castShadow = true;
         group.add(pane);
-        const frame = new THREE.Mesh(
-          new THREE.BoxGeometry(hazard.w / 40 + 0.06, hazard.h / 40 + 0.06, 0.08),
+        const frame = box(
+          hazard.w / 40 + 0.06,
+          hazard.h / 40 + 0.06,
+          0.08,
           this.propMaterials.darkMetal,
         );
         frame.position.z = 0.72;
@@ -471,19 +527,13 @@ export class World3D {
       case 'zipline': {
         const endX = hazard.meta?.endX ?? hazard.x + hazard.w;
         const len = (endX - hazard.x) / 40;
-        const cable = new THREE.Mesh(
-          new THREE.CylinderGeometry(0.035, 0.035, len, 6),
-          this.propMaterials.pipe,
-        );
+        const cable = cyl(0.035, len, 6, this.propMaterials.pipe);
         cable.rotation.z = Math.PI / 2;
         cable.position.set(0, 0.1, 0);
         group.add(cable);
 
         for (const sx of [-0.45, 0.45]) {
-          const post = new THREE.Mesh(
-            new THREE.CylinderGeometry(0.07, 0.07, 1.5, 6),
-            this.propMaterials.darkMetal,
-          );
+          const post = cyl(0.07, 1.5, 6, this.propMaterials.darkMetal);
           post.position.set(sx * len, -0.6, 0);
           post.castShadow = true;
           group.add(post);
@@ -491,12 +541,14 @@ export class World3D {
         break;
       }
       default: {
-        const box = new THREE.Mesh(
-          new THREE.BoxGeometry(hazard.w / 40, Math.max(0.3, hazard.h / 40), 1.0),
+        const boxMesh = box(
+          hazard.w / 40,
+          Math.max(0.3, hazard.h / 40),
+          1.0,
           this.propMaterials.vent,
         );
-        box.castShadow = true;
-        group.add(box);
+        boxMesh.castShadow = true;
+        group.add(boxMesh);
         break;
       }
     }
@@ -558,10 +610,32 @@ export class World3D {
     }
   }
 
-  /** Recursively disposes the geometries in a group. */
+  /**
+   * Removes every mesh from a group without disposing its geometry.
+   *
+   * Used for groups whose geometry comes from the shared pool, so the
+   * buffers stay available for the next prop that needs them.
+   */
+  private releaseGroup(group: THREE.Group): void {
+    group.traverse((obj) => {
+      if (obj instanceof THREE.Mesh) {
+        obj.removeFromParent();
+      }
+    });
+  }
+
+  /**
+   * Removes every mesh from a group and disposes its geometry.
+   *
+   * Used for groups that own their geometry outright, such as the
+   * background city towers.
+   */
   private disposeGroup(group: THREE.Group): void {
     group.traverse((obj) => {
-      if (obj instanceof THREE.Mesh) obj.geometry.dispose();
+      if (obj instanceof THREE.Mesh) {
+        obj.geometry.dispose();
+        obj.removeFromParent();
+      }
     });
   }
 
@@ -569,15 +643,18 @@ export class World3D {
   dispose(): void {
     for (const mesh of this.slabMeshes.values()) {
       this.group.remove(mesh);
-      mesh.geometry.dispose();
     }
     this.slabMeshes.clear();
 
     for (const group of this.hazardGroups.values()) {
       this.group.remove(group);
-      this.disposeGroup(group);
+      this.releaseGroup(group);
     }
     this.hazardGroups.clear();
+
+    // Debris reuses pooled geometry.
+    for (const d of this.debris) this.group.remove(d.mesh);
+    this.debris.length = 0;
 
     for (const mat of this.windowMaterials) mat.dispose();
     this.windowMaterials = [];
@@ -585,5 +662,6 @@ export class World3D {
     this.disposeGroup(this.deepCity);
     for (const mat of Object.values(this.materials)) mat.dispose();
     for (const mat of Object.values(this.propMaterials)) mat.dispose();
+    this.disposeGeometryPool();
   }
 }
