@@ -252,3 +252,10 @@ rel="icon">` in `index.html` and ship the file in `public/` so the
   `SW_DEBUG=0` to omit the IK debug overlay.
 - `npx tsx tools/autopilot.ts` — runs the state-driven Medium pilot used by the
   scenario suite, reporting distance, Flow and the mechanics it exercised.
+- `npx tsx tools/preview3d.ts out.png <mood> <frames>` — renders a
+  software-rasterised PNG of the real 3D scene: the actual camera, lights,
+  procedural textures and fog. Use it to judge the rooftop composition and
+  the atmosphere without a GPU or a browser. `dusk`, `rain` and `dawn` are
+  the supported moods.
+- `npx tsx tools/three-check.ts` — validates the simulation↔scene boundary
+  offline: unit conversion, depth bands and the scene graph.

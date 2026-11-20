@@ -136,19 +136,25 @@ src/main.ts    app shell: fixed-timestep loop + wiring
 
 The 3D layer is split into focused modules: `units.ts` owns the
 simulation↔scene coordinate boundary, `camera3d.ts` the framing, `world3d.ts`
-the rooftops and city, `humanoid3d.ts` the runner, `lighting3d.ts` the
-atmospheres, `textures3d.ts` the procedural materials, `renderer3d.ts` the
-renderer and post-processing, and `presenter.ts` the WebGL probe and the
-fallback to 2D.
+the rooftops and city, `rooftop3d.ts` the rooftop dressing and building
+facades, `humanoid3d.ts` the runner, `lighting3d.ts` the atmospheres,
+`textures3d.ts` the procedural materials, `renderer3d.ts` the renderer and
+post-processing, and `presenter.ts` the WebGL probe and the fallback to 2D.
 
 Because the simulation never touches the DOM, the entire game is unit tested
-in Node — 190 tests covering the IK maths, raycasting, the Flow state machine,
+in Node — 212 tests covering the IK maths, raycasting, the Flow state machine,
 the difficulty tables, chunk generation, the full game loop, the parkour
 mechanics, and the simulation↔3D contract (depth bands, camera framing,
-lighting rigs, geometry pooling and the presenter fallback).
+lighting rigs, rooftop dressing, background-city tiling, geometry pooling and
+the presenter fallback).
 
 `npx tsx tools/three-check.ts` runs the real 3D pipeline against the real
 simulation offline, so the scene graph can be validated in CI without a GPU.
+
+`npx tsx tools/preview3d.ts out.png dusk` renders a software-rasterised
+snapshot of the real scene — the actual camera, lights, procedural textures
+and fog — so composition and lighting can be judged without a GPU or a
+browser. It is a development aid and is never bundled.
 
 See [`AGENTS.md`](./AGENTS.md) for the full working rules.
 
